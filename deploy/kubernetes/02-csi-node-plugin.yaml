@@ -25,7 +25,7 @@ spec:
       hostPID: true
       containers:
         - name: csi-plugin
-          image: &image quay.io/subprovisioner/subprovisioner:latest
+          image: &image quay.io/subprovisioner/subprovisioner:v0.2.1
           command:
             - ./subprovisioner
             - csi-node-plugin

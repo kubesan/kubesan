@@ -109,13 +109,13 @@ best when all io is ultimately directed to the same physical location.
 If you are using OpenShift:
 
 ```console
-$ kubectl create -k https://gitlab.com/subprovisioner/subprovisioner/deploy/openshift?ref=v0.2.0
+$ kubectl create -k https://gitlab.com/subprovisioner/subprovisioner/deploy/openshift?ref=v0.2.1
 ```
 
 Otherwise use the vanilla Kubernetes kustomization:
 
 ```console
-$ kubectl create -k https://gitlab.com/subprovisioner/subprovisioner/deploy/kubernetes?ref=v0.2.0
+$ kubectl create -k https://gitlab.com/subprovisioner/subprovisioner/deploy/kubernetes?ref=v0.2.1
 ```
 
 If you wish to create snapshots of volumes, your Kubernetes cluster must have

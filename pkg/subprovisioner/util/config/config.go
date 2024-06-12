@@ -6,7 +6,7 @@ import "os"
 
 const (
 	Domain  = "subprovisioner.gitlab.io"
-	Version = "v0.2.0"
+	Version = "v0.2.1"
 
 	K8sNamespace = "subprovisioner"
 )
