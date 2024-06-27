@@ -25,7 +25,7 @@ spec:
       hostPID: true
       containers:
         - name: csi-plugin
-          image: &image quay.io/kubesan/kubesan:latest
+          image: &image quay.io/kubesan/kubesan:v0.4.0
           command:
             - ./kubesan
             - csi-node-plugin
