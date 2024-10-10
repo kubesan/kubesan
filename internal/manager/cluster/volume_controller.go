@@ -44,8 +44,8 @@ func newBlobManager(volume *v1alpha1.Volume) (BlobManager, error) {
 	switch volume.Spec.Mode {
 	case v1alpha1.VolumeModeThin:
 		return nil, errors.NewBadRequest("thin blobs not yet implemented")
-	case v1alpha1.VolumeModeFat:
-		return NewFatBlobManager(volume.Spec.VgName), nil
+	case v1alpha1.VolumeModeLinear:
+		return NewLinearBlobManager(volume.Spec.VgName), nil
 	default:
 		return nil, errors.NewBadRequest("invalid volume mode")
 	}

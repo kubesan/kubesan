@@ -39,7 +39,7 @@ func SetUpVolumeNodeReconciler(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups=kubesan.gitlab.io,resources=volumes,verbs=get;list;watch;create;update;patch;delete,namespace=kubesan-system
 // +kubebuilder:rbac:groups=kubesan.gitlab.io,resources=volumes/status,verbs=get;update;patch,namespace=kubesan-system
 
-func (r *VolumeNodeReconciler) reconcileFat(ctx context.Context, volume *v1alpha1.Volume) error {
+func (r *VolumeNodeReconciler) reconcileLinear(ctx context.Context, volume *v1alpha1.Volume) error {
 	// check if already created
 
 	if !conditionsv1.IsStatusConditionTrue(volume.Status.Conditions, conditionsv1.ConditionAvailable) {
@@ -111,8 +111,8 @@ func (r *VolumeNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	switch volume.Spec.Mode {
 	case v1alpha1.VolumeModeThin:
 		err = errors.NewBadRequest("not implemented") // TODO
-	case v1alpha1.VolumeModeFat:
-		err = r.reconcileFat(ctx, volume)
+	case v1alpha1.VolumeModeLinear:
+		err = r.reconcileLinear(ctx, volume)
 	default:
 		err = errors.NewBadRequest("invalid volume mode")
 	}

@@ -2,7 +2,7 @@
 
 package cluster
 
-// BlobManager abstracts operations that depend on the volume mode (fat or
+// BlobManager abstracts operations that depend on the volume mode (linear or
 // thin).
 type BlobManager interface {
 	// CreateBlob creates an empty blob of the given size if it does not

@@ -8,22 +8,22 @@ import (
 	"gitlab.com/kubesan/kubesan/internal/common/commands"
 )
 
-type FatBlobManager struct {
+type LinearBlobManager struct {
 	vgName string
 }
 
-// NewFatBlobManager returns a BlobManager implemented using LVM's linear
-// logical volumes. Linear LVs are fully provisioned (hence the name "fat") and
-// support direct ReadWriteMany without NBD when used without LVM's COW
-// snapshots. They are a natural fit for use cases that require constant RWX
-// and do not need snapshots.
-func NewFatBlobManager(vgName string) BlobManager {
-	return &FatBlobManager{
+// NewLinearBlobManager returns a BlobManager implemented using LVM's linear
+// logical volumes. Linear LVs are fully provisioned and support direct
+// ReadWriteMany without NBD when used without LVM's COW snapshots. They are a
+// natural fit for use cases that require constant RWX and do not need
+// snapshots.
+func NewLinearBlobManager(vgName string) BlobManager {
+	return &LinearBlobManager{
 		vgName: vgName,
 	}
 }
 
-func (m *FatBlobManager) CreateBlob(name string, sizeBytes int64) error {
+func (m *LinearBlobManager) CreateBlob(name string, sizeBytes int64) error {
 	_, err := commands.LvmLvCreateIdempotent(
 		"--devicesfile", m.vgName,
 		"--activate", "n",
@@ -44,7 +44,7 @@ func (m *FatBlobManager) CreateBlob(name string, sizeBytes int64) error {
 	return err
 }
 
-func (m *FatBlobManager) RemoveBlob(name string) error {
+func (m *LinearBlobManager) RemoveBlob(name string) error {
 	_, err := commands.LvmLvRemoveIdempotent(
 		"--devicesfile", m.vgName,
 		fmt.Sprintf("%s/%s", m.vgName, name),

@@ -20,7 +20,7 @@ type VolumeSpec struct {
 
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
-	// +kubebuilder:validation:Enum=Thin;Fat
+	// +kubebuilder:validation:Enum=Thin;Linear
 	Mode VolumeMode `json:"mode"`
 
 	// Should be set from creation and never updated.
@@ -62,8 +62,8 @@ func (v *VolumeSpec) ReadOnly() bool {
 type VolumeMode string
 
 const (
-	VolumeModeThin VolumeMode = "Thin"
-	VolumeModeFat  VolumeMode = "Fat"
+	VolumeModeThin   VolumeMode = "Thin"
+	VolumeModeLinear VolumeMode = "Linear"
 )
 
 type VolumeType struct {
@@ -151,7 +151,7 @@ func (v *VolumeStatus) GetPath() string {
 // +kubebuilder:printcolumn:name="Primary Node",type=string,JSONPath=`.status.attachedToNodes[0]`,description='Primary node where volume is currently active'
 // + TODO determine if there is a way to print a column "Active Nodes" that displays the number of items in the .status.attachedToNodes array
 // +kubebuilder:printcolumn:name="Size",type=integer,JSONPath=`.status.sizeBytes`,description='Size of volume'
-// +kubebuilder:printcolumn:name="Mode",type=string,JSONPath=`.spec.mode`,description='Mode of volume (thin or fat)',priority=2
+// +kubebuilder:printcolumn:name="Mode",type=string,JSONPath=`.spec.mode`,description='Mode of volume (thin or linear)',priority=2
 // +kubebuilder:printcolumn:name="FSType",type=string,JSONPath=`.spec.type.filesystem.fsType`,description='Filesystem type (blank if block)',priority=2
 
 // Volume is the Schema for the volumes API
