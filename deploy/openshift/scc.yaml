@@ -27,6 +27,8 @@ supplementalGroups:
 users:
   - system:serviceaccount:kubesan-system:csi-controller-plugin
   - system:serviceaccount:kubesan-system:csi-node-plugin
+  - system:serviceaccount:kubesan-system:cluster-controller-manager
+  - system:serviceaccount:kubesan-system:node-controller-manager
 volumes:
   - configMap
   - emptyDir
