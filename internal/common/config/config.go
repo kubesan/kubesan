@@ -16,7 +16,7 @@ import (
 
 const (
 	Domain  = "kubesan.gitlab.io"
-	Version = "v0.5.1"
+	Version = "v0.5.2"
 
 	Finalizer = Domain + "/finalizer"
 

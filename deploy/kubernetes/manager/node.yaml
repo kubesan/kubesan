@@ -21,7 +21,7 @@ spec:
       hostPID: true
       containers:
         - name: manager
-          image: quay.io/kubesan/kubesan:v0.5.1
+          image: quay.io/kubesan/kubesan:v0.5.2
           args:
             - node-controller-manager
           env:
