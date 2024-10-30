@@ -26,7 +26,7 @@ spec:
       serviceAccountName: csi-controller-plugin
       containers:
         - name: csi-plugin
-          image: quay.io/kubesan/kubesan:latest
+          image: quay.io/kubesan/kubesan:v0.6.0
           args:
             - csi-controller-plugin
           env:
