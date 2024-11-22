@@ -29,6 +29,8 @@ func SetUpNBDExportNodeReconciler(mgr ctrl.Manager) error {
 		Scheme: mgr.GetScheme(),
 	}
 
+	nbd.Startup()
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.NBDExport{}).
 		Complete(r)
