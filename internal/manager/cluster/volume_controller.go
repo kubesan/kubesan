@@ -17,6 +17,7 @@ import (
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
 	kubesanslices "gitlab.com/kubesan/kubesan/internal/common/slices"
+	"gitlab.com/kubesan/kubesan/internal/manager/common/blobs"
 	"gitlab.com/kubesan/kubesan/internal/manager/common/util"
 	"gitlab.com/kubesan/kubesan/internal/manager/common/workers"
 )
@@ -45,18 +46,18 @@ func SetUpVolumeReconciler(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups=kubesan.gitlab.io,resources=volumes/status,verbs=get;update;patch,namespace=kubesan-system
 // +kubebuilder:rbac:groups=kubesan.gitlab.io,resources=volumes/finalizers,verbs=update,namespace=kubesan-system
 
-func (r *VolumeReconciler) newBlobManager(volume *v1alpha1.Volume) (BlobManager, error) {
+func (r *VolumeReconciler) newBlobManager(volume *v1alpha1.Volume) (blobs.BlobManager, error) {
 	switch volume.Spec.Mode {
 	case v1alpha1.VolumeModeThin:
-		return NewThinBlobManager(r.Client, r.Scheme, volume, volume.Spec.VgName), nil
+		return blobs.NewThinBlobManager(r.Client, r.Scheme, volume, volume.Spec.VgName), nil
 	case v1alpha1.VolumeModeLinear:
-		return NewLinearBlobManager(r.workers, volume, volume.Spec.VgName), nil
+		return blobs.NewLinearBlobManager(r.workers, volume, volume.Spec.VgName), nil
 	default:
 		return nil, errors.NewBadRequest("invalid volume mode")
 	}
 }
 
-func (r *VolumeReconciler) reconcileDeleting(ctx context.Context, blobMgr BlobManager, volume *v1alpha1.Volume) error {
+func (r *VolumeReconciler) reconcileDeleting(ctx context.Context, blobMgr blobs.BlobManager, volume *v1alpha1.Volume) error {
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
 	if len(volume.Status.AttachedToNodes) > 0 {
@@ -82,7 +83,7 @@ func (r *VolumeReconciler) reconcileDeleting(ctx context.Context, blobMgr BlobMa
 	return nil
 }
 
-func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr BlobManager, volume *v1alpha1.Volume) error {
+func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blobs.BlobManager, volume *v1alpha1.Volume) error {
 	// add finalizer
 
 	if controllerutil.AddFinalizer(volume, config.Finalizer) {
