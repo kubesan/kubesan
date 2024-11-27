@@ -50,7 +50,6 @@ func thinPoolLvNeedsActivation(thinPoolLv *v1alpha1.ThinPoolLv) bool {
 	// be activated appropriately or may remain activated when it shouldn't
 	// be!
 	// TODO populating from contents (cloning)
-	// TODO NBD
 
 	for i := range thinPoolLv.Spec.ThinLvs {
 		thinLvSpec := &thinPoolLv.Spec.ThinLvs[i]

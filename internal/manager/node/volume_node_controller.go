@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
@@ -40,6 +41,7 @@ func SetUpVolumeNodeReconciler(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Volume{}).
 		Owns(&v1alpha1.ThinPoolLv{}).
+		Owns(&v1alpha1.NBDExport{}).
 		Complete(r)
 }
 
@@ -167,6 +169,49 @@ func (r *VolumeNodeReconciler) reconcileThinNBDCleanup(ctx context.Context, volu
 	return nil
 }
 
+// Handle the creation of any NBD export
+func (r *VolumeNodeReconciler) reconcileThinNBDSetup(ctx context.Context, volume *v1alpha1.Volume, thinPoolLv *v1alpha1.ThinPoolLv) error {
+	thinLvName := thinpoollv.VolumeToThinLvName(volume.Name)
+	nodes := volume.Spec.AttachToNodes
+	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
+
+	if !isThinLvActiveOnLocalNode(thinPoolLv, thinLvName) {
+		return nil
+	}
+	if !slices.Contains(nodes, config.LocalNodeName) || len(nodes) == 1 {
+		return nil
+	}
+
+	name := config.LocalNodeName + "-" + thinpoollv.VolumeToThinLvName(volume.Name)
+	if volume.Status.NBDExport == name {
+		return nil
+	}
+
+	log.Info("setting up NBD export")
+	export := &v1alpha1.NBDExport{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: config.Namespace,
+		},
+		Spec: v1alpha1.NBDExportSpec{
+			Host:   config.LocalNodeName,
+			Export: volume.Name,
+			Path:   devName(volume),
+		},
+	}
+	controllerutil.AddFinalizer(export, config.Finalizer)
+	if err := controllerutil.SetControllerReference(volume, export, r.Scheme); err != nil {
+		return err
+	}
+
+	if err := client.IgnoreAlreadyExists(r.Client.Create(ctx, export)); err != nil {
+		return err
+	}
+
+	volume.Status.NBDExport = name
+	return r.statusUpdate(ctx, volume)
+}
+
 func isThinLvActiveOnLocalNode(thinPoolLv *v1alpha1.ThinPoolLv, name string) bool {
 	thinLvStatus := thinPoolLv.Status.FindThinLv(name)
 	return thinLvStatus != nil && thinPoolLv.Status.ActiveOnNode == config.LocalNodeName && thinLvStatus.State.Name == v1alpha1.ThinLvStatusStateNameActive
@@ -223,7 +268,15 @@ func (r *VolumeNodeReconciler) reconcileThin(ctx context.Context, volume *v1alph
 		return err
 	}
 
-	return r.updateStatusAttachedToNodes(ctx, volume, thinPoolLv)
+	if err := r.updateStatusAttachedToNodes(ctx, volume, thinPoolLv); err != nil {
+		return err
+	}
+
+	if err := r.reconcileThinNBDSetup(ctx, volume, thinPoolLv); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r *VolumeNodeReconciler) reconcileLinear(ctx context.Context, volume *v1alpha1.Volume) error {
