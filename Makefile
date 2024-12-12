@@ -55,8 +55,7 @@ help: ## Display this help.
 
 .PHONY: build
 build: .generate.timestamp vet lint ## Build the KubeSAN image.
-	go mod download
-	go build -o bin/kubesan cmd/main.go
+	go build -mod=vendor --ldflags "-s -w" -a -o bin/kubesan cmd/main.go
 
 ##@ Development
 
@@ -100,6 +99,14 @@ lint: golangci-lint ## Run the golangci-lint linter.
 lint-fix: golangci-lint ## Run the golangci-lint linter and perform fixes.
 	$(GOLANGCI_LINT) run --fix
 
+.PHONY: tidy
+tidy:
+	go mod tidy
+
+.PHONY: vendor
+vendor: tidy
+	go mod vendor
+
 ##@ Dependencies
 
 $(LOCALBIN):
@@ -129,7 +136,7 @@ define go-install-tool
 set -e; \
 package=$(2)@$(3) ;\
 echo "Downloading $${package}" ;\
-GOBIN=$(LOCALBIN) go install $${package} ;\
+GOBIN=$(LOCALBIN) go install -mod=readonly $${package} ;\
 mv "$$(echo "$(1)" | sed "s/-$(3)$$//")" $(1) ;\
 }
 endef
