@@ -6,6 +6,7 @@ package thinpoollv
 
 import (
 	"context"
+	"reflect"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
@@ -112,18 +113,21 @@ func recalcActiveOnNode(thinPoolLv *v1alpha1.ThinPoolLv) bool {
 	return false
 }
 
-// Recalculate Spec.ActiveOnNode and invoke client.Update() for thinPoolLv. If
-// needUpdate is true then update even when Spec.ActiveOnNode is unchanged.
-func UpdateThinPoolLv(ctx context.Context, client client.Client, thinPoolLv *v1alpha1.ThinPoolLv, needUpdate bool) error {
+// Recalculate Spec.ActiveOnNode and invoke client.Update() for thinPoolLv
+// if it has changed from oldThinPoolLv.
+func UpdateThinPoolLv(ctx context.Context, client client.Client, oldThinPoolLv, thinPoolLv *v1alpha1.ThinPoolLv) error {
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
-
-	if recalcActiveOnNode(thinPoolLv) {
-		needUpdate = true
+	preferred := thinPoolLv.Spec.ActiveOnNode
+	former := "?"
+	if oldThinPoolLv != nil {
+		former = oldThinPoolLv.Spec.ActiveOnNode
 	}
-	if !needUpdate {
-		log.Info("ThinPoolLv update not needed")
+
+	recalcActiveOnNode(thinPoolLv)
+	if reflect.DeepEqual(oldThinPoolLv, thinPoolLv) {
+		log.Info("ThinPoolLv update not needed", "Spec.ActiveOnNode", thinPoolLv.Spec.ActiveOnNode, "Status.ActiveOnNode", thinPoolLv.Status.ActiveOnNode)
 		return nil
 	}
-	log.Info("Updating ThinPoolLv", "Spec.ActiveOnNode", thinPoolLv.Spec.ActiveOnNode)
+	log.Info("Updating ThinPoolLv", "former", former, "preferred", preferred, "Spec.ActiveOnNode", thinPoolLv.Spec.ActiveOnNode, "Status.ActiveOnNode", thinPoolLv.Status.ActiveOnNode)
 	return client.Update(ctx, thinPoolLv)
 }

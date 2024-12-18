@@ -68,7 +68,7 @@ func (r *VolumeNodeReconciler) reconcileThinAttaching(ctx context.Context, volum
 		}
 	}
 
-	if err := thinpoollv.UpdateThinPoolLv(ctx, r.Client, thinPoolLv, oldThinPoolLv != thinPoolLv); err != nil {
+	if err := thinpoollv.UpdateThinPoolLv(ctx, r.Client, oldThinPoolLv, thinPoolLv); err != nil {
 		return err
 	}
 
@@ -86,7 +86,7 @@ func (r *VolumeNodeReconciler) reconcileThinDetaching(ctx context.Context, volum
 	if thinPoolLv.Status.ActiveOnNode != config.LocalNodeName {
 		if thinPoolLv.Spec.ActiveOnNode == config.LocalNodeName {
 			// clear thinPoolLv.Spec.ActiveOnNode once activation is no longer required
-			return thinpoollv.UpdateThinPoolLv(ctx, r.Client, thinPoolLv, false)
+			return thinpoollv.UpdateThinPoolLv(ctx, r.Client, oldThinPoolLv, thinPoolLv)
 		}
 		return nil // it's not attached to this node
 	}
@@ -103,7 +103,7 @@ func (r *VolumeNodeReconciler) reconcileThinDetaching(ctx context.Context, volum
 		}
 	}
 
-	return thinpoollv.UpdateThinPoolLv(ctx, r.Client, thinPoolLv, oldThinPoolLv != thinPoolLv)
+	return thinpoollv.UpdateThinPoolLv(ctx, r.Client, oldThinPoolLv, thinPoolLv)
 }
 
 func isThinLvActiveOnLocalNode(thinPoolLv *v1alpha1.ThinPoolLv, name string) bool {
