@@ -11,7 +11,7 @@ LOCALBIN ?= $(shell pwd)/bin
 ## Tool Versions
 CONTROLLER_TOOLS_VERSION ?= v0.14.0
 ENVTEST_VERSION ?= release-0.17
-GOLANGCI_LINT_VERSION ?= v1.57.2
+GOLANGCI_LINT_VERSION ?= v1.62.2
 
 ## Tool Binaries
 KUBECTL ?= kubectl
