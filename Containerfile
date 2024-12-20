@@ -28,9 +28,10 @@ RUN go mod verify
 
 # Copy only source files, not generated binaries, since binaries built
 # in the host environment may not work in the container environment.
+# Sort directories with the least-frequently updated ones first.
 COPY api/ api/
-COPY cmd/ cmd/
 COPY deploy/ deploy/
+COPY cmd/ cmd/
 COPY internal/ internal/
 
 # We set GOOS and GOARCH so go cross-compiles to the correct os and arch

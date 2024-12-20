@@ -83,7 +83,9 @@ generate: controller-gen .generate.timestamp
 GROUPVERSION_INFO=api/v1alpha1/groupversion_info.go
 CRD_TYPES:=$(wildcard api/v1alpha1/*_types.go)
 
-.generate.timestamp: $(CONTROLLER_GEN) $(GROUPVERSION_INFO) $(CRD_TYPES)  ## Generate ClusterRole and CustomResourceDefinition YAML, and corresponding DeepCopy*() methods.
+# Remember to update tests/Containerfile if this rule changes the set of
+# generated output files.
+.generate.timestamp: $(CONTROLLER_GEN) $(GROUPVERSION_INFO) $(CRD_TYPES) ## Generate ClusterRole and CustomResourceDefinition YAML, and corresponding DeepCopy*() methods.
 	$(CONTROLLER_GEN) \
 		object:headerFile="hack/header.go.txt" \
 		crd:headerFile="hack/header.yaml.txt" \

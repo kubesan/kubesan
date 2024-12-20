@@ -18,12 +18,27 @@ COPY go.mod go.sum Makefile .golangci.yml PROJECT ./
 RUN make controller-gen golangci-lint
 
 # Copy the files to be linted. This skips vendor/ on purpose.
-COPY api/ api/
-COPY cmd/ cmd/
-COPY deploy/ deploy/
+# Sort directories with the least-frequently updated ones first.
 COPY hack/ hack/
+COPY api/ api/
+COPY deploy/ deploy/
+COPY cmd/ cmd/
 COPY internal/ internal/
 
-RUN make generate
+# Move generated files and regenerate to ensure they were up-to-date.
+# Regeneration produces all files except kustomization.yaml in crd,
+# just role.yaml in rbac, and zz_generated.deepcopy.go under api/.
+# Keep this rule in line with ../Makefile's .generate.timestamp.
+RUN mkdir orig && \
+    mv api/v1alpha1/zz_generated.deepcopy.go orig && \
+    mv deploy/kubernetes/rbac/role.yaml orig && \
+    mv deploy/kubernetes/crd orig && \
+    mkdir deploy/kubernetes/crd && \
+    cp orig/crd/kustomization.yaml deploy/kubernetes/crd/ && \
+    make generate && \
+    diff --unified --recursive orig/crd deploy/kubernetes/crd && \
+    diff --unified orig/role.yaml deploy/kubernetes/rbac/role.yaml && \
+    diff --unified orig/zz_generated.deepcopy.go api/v1alpha1/zz_generated.deepcopy.go && \
+    rm -r orig
 
 RUN make vet lint
