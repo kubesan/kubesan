@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+ARG BUILDPLATFORM
 ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETPLATFORM
@@ -6,7 +7,17 @@ ARG TARGETPLATFORM
 # This file is used to generate the container image to be loaded into
 # a KubeSAN deployment.  It assumes that the caller has already prepared
 # all necessary generated files; for linting, use tests/Containerfile.
-FROM quay.io/projectquay/golang:1.22 AS builder
+
+## --target target
+# This is the default target.  It is pulled first to ensure we have the
+# right architectures, while still allowing the builder to run natively.
+# CentOS Stream 9 doesn't provide package nbd
+# FROM quay.io/centos/centos:stream9
+FROM --platform=$TARGETPLATFORM quay.io/fedora/fedora:40 as target
+
+## --target builder
+# This target builds the kubesan binary, possibly with cross-compilation.
+FROM --platform=$BUILDPLATFORM quay.io/projectquay/golang:1.22 AS builder
 
 WORKDIR /kubesan
 
@@ -25,11 +36,8 @@ COPY internal/ internal/
 # We set GOOS and GOARCH so go cross-compiles to the correct os and arch
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH make bin/kubesan
 
-# CentOS Stream 9 doesn't provide package nbd
-# FROM quay.io/centos/centos:stream9
-# We use --platform=$TARGETPLATFORM to pull the correct arch for
-# the base image. This is needed for multi-arch builds
-FROM --platform=$TARGETPLATFORM quay.io/fedora/fedora:40
+## Back to the default target
+FROM target
 
 # util-linux-core, e2fsprogs, and xfsprogs are for Filesystem volume support where
 # blkid(8) and mkfs are required by k8s.io/mount-utils.

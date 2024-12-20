@@ -1,3 +1,4 @@
+#!/bin/bash
 # SPDX-License-Identifier: Apache-2.0
 
 set -e
@@ -6,6 +7,11 @@ GREEN='\033[0;32m'
 RESET='\033[0m'
 VERSION=$1
 PREV_VERSION=$2
+
+if test $# != 2; then
+    echo "Usage: $0 VERS PREV_VERS"
+    exit 1
+fi
 
 # Update files with version number
 printf "${GREEN}Updating version number in files${RESET}\n"
@@ -18,13 +24,14 @@ sed -i "s|kubesan/kubesan/deploy/kubernetes?ref=${PREV_VERSION}|kubesan/kubesan/
 git add internal/common/config/config.go deploy/kubernetes/kustomization.yaml docs/1-getting-started.md
 git commit -s -m "Release ${VERSION}" -e
 
-# Run tests 
+# Run tests
 printf "${GREEN}Running tests${RESET}\n"
 tests/run.sh all
 
 # Publish container image
 printf "${GREEN}Publish container image${RESET}\n"
-podman push localhost/kubesan:latest quay.io/kubesan/kubesan:${VERSION}
+make container-multiarch CONTAINER_TOOL=podman IMG=quay.io/kubesan/kubesan:${VERSION}
+podman manifest push quay.io/kubesan/kubesan:${VERSION}
 
 # Publish git tag
 printf "${GREEN}Publishing git tag${RESET}\n"
@@ -41,4 +48,3 @@ git commit -s -m "Reopen development after ${VERSION}"
 # Push commits
 printf "${GREEN}Pushing commits to main${RESET}\n"
 git push origin HEAD
-

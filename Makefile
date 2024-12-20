@@ -26,7 +26,9 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+# Set CONTAINER_PLATFORMS=--all-platforms to see if this static list needs to grow
 CONTAINER_TOOL ?= podman
+CONTAINER_PLATFORMS ?= --platform=linux/amd64,linux/ppc64le,linux/s390x,linux/arm64
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
@@ -65,8 +67,13 @@ bin/kubesan: ## Build just the KubeSAN image, locally or in a container.
 	go build -mod=vendor --ldflags "-s -w" -a -o bin/kubesan cmd/main.go
 
 .PHONY: container
-container:  ## Build the KubeSAN container.
+container: ## Build a single-arch KubeSAN container, for testing.
 	$(CONTAINER_TOOL) build -t $(IMG) .
+
+.PHONY: container-multiarch
+container-multiarch: ## Build a multi-arch KubeSAN container, for release.
+	$(CONTAINER_TOOL) manifest create --amend $(IMG)
+	$(CONTAINER_TOOL) build $(CONTAINER_PLATFORMS) --manifest $(IMG) .
 
 ##@ Development
 

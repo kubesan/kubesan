@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
+ARG BUILDPLATFORM
 
 # This file runs all lint-like tests that should be validated in CI prior to
 # building the top-level Containerfile.  It is generally built via the
 # containerized-build.sh script, and doesn't need to be tagged or uploaded.
 
-FROM quay.io/projectquay/golang:1.22
+FROM --platform=$BUILDPLATFORM quay.io/projectquay/golang:1.22
 
 # Needed for golangci-lint
 RUN dnf install -qy diffutils && dnf clean all
