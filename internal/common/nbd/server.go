@@ -205,7 +205,7 @@ func nodeName(export string) string {
 
 // Returns the QMP block export id given an NBD export name.
 func blockExportId(export string) string {
-	return fmt.Sprintf("export-%s", export)
+	return "export-" + export
 }
 
 // Returns success only once the server is running and has the TCP port open.
