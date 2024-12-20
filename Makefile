@@ -56,7 +56,12 @@ help: ## Display this help.
 ##@ Build
 
 .PHONY: build
-build: .generate.timestamp vet lint ## Build the KubeSAN image locally.
+build: .generate.timestamp vet lint bin/kubesan ## Generate files and build the KubeSAN image locally.
+
+# Even though bin/kubesan is a real file, we don't want to spell out all of
+# the .go file dependencies; it's easier to just run go build unconditionally.
+.PHONY: bin/kubesan
+bin/kubesan: ## Build just the KubeSAN image, locally or in a container.
 	go build -mod=vendor --ldflags "-s -w" -a -o bin/kubesan cmd/main.go
 
 .PHONY: container
