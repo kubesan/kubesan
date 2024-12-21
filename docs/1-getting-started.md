@@ -42,9 +42,10 @@ EOF
 $ systemctl restart systemd-modules-load.service
 ```
 
-Generally you should enable as many NBD devices on each node as the
-maximum number of KubeSAN volumes you may need to have mounted
-on a single node at once.
+The NBD module requires Linux kernel 5.14 or later on all nodes of the
+cluster; this is so that KubeSAN can utilize NBD netlink configuration
+for as many NBD devices as needed, rather than having to worry about
+setting the nbds_max module parameter.
 
 ## LVM configuration
 

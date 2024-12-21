@@ -32,6 +32,35 @@ USER 65532:65532
 
 ENTRYPOINT [ "/bin/false" ]
 
+## --target nbd-client-i
+# The latest release of nbd 3.26 lacks patches we need for 'nbd-client -i'.
+#
+# cd path/to/kubesan.git
+# IMG=quay.io/kubesan/nbd-client-i:$VERSION
+# podman manifest create $IMG
+# podman build --all-platforms --manifest $IMG --target nbd-client-i -f deps/Containerfile .
+# podman manifest push $IMG
+
+FROM --platform=$TARGETPLATFORM quay.io/fedora/fedora:40 AS c-builder
+
+RUN dnf update -y && dnf -y install --nodocs --noplugins 'dnf-command(builddep)' \
+  git autoconf-archive automake libtool flex \
+&& dnf -y builddep nbd
+
+RUN git clone https://github.com/NetworkBlockDevice/nbd.git nbd \
+&& cd nbd \
+&& git checkout 87c5318abfa2049b37505d498414c2c1fef6f23a \
+&& ./autogen.sh \
+&& ./configure --disable-manpages \
+&& make
+
+FROM scratch AS nbd-client-i
+COPY --from=c-builder /nbd/nbd-client bin/
+
+USER 65532:65532
+
+ENTRYPOINT [ "/bin/false" ]
+
 ## Default target.
 # This Containerfile is intentionally useless on its own, and only designed
 # to work with specific --targets.  Search for '##' above.
