@@ -13,7 +13,7 @@ ARG TARGETPLATFORM
 # right architectures, while still allowing the builder to run natively.
 # CentOS Stream 9 doesn't provide package nbd
 # FROM quay.io/centos/centos:stream9
-FROM --platform=$TARGETPLATFORM quay.io/fedora/fedora:40 as target
+FROM --platform=$TARGETPLATFORM quay.io/fedora/fedora:40 AS target
 
 ## --target builder
 # This target builds the kubesan binary, possibly with cross-compilation.
