@@ -22,7 +22,7 @@ type Output struct {
 
 // If the command exits with a non-zero status, an error is returned alongside the output.
 func RunInContainerContext(ctx context.Context, command ...string) (Output, error) {
-	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
+	cmd := exec.CommandContext(ctx, command[0], command[1:]...) //nolint:gosec
 	cmd.Env = append(cmd.Environ(), "LC_ALL=C")
 	cmd.Stdin = nil
 

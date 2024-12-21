@@ -17,7 +17,7 @@ GOLANGCI_LINT_VERSION ?= v1.62.2
 KUBECTL ?= kubectl
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen-$(CONTROLLER_TOOLS_VERSION)
 ENVTEST ?= $(LOCALBIN)/setup-envtest-$(ENVTEST_VERSION)
-GOLANGCI_LINT = $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
+GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -26,7 +26,9 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+# Set CONTAINER_PLATFORMS=--all-platforms to see if this static list needs to grow
 CONTAINER_TOOL ?= podman
+CONTAINER_PLATFORMS ?= --platform=linux/amd64,linux/ppc64le,linux/s390x,linux/arm64
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
@@ -56,12 +58,22 @@ help: ## Display this help.
 ##@ Build
 
 .PHONY: build
-build: .generate.timestamp vet lint ## Build the KubeSAN image locally.
+build: .generate.timestamp vet lint bin/kubesan ## Generate files and build the KubeSAN image locally.
+
+# Even though bin/kubesan is a real file, we don't want to spell out all of
+# the .go file dependencies; it's easier to just run go build unconditionally.
+.PHONY: bin/kubesan
+bin/kubesan: ## Build just the KubeSAN image, locally or in a container.
 	go build -mod=vendor --ldflags "-s -w" -a -o bin/kubesan cmd/main.go
 
 .PHONY: container
-container:  ## Build the KubeSAN container.
+container: ## Build a single-arch KubeSAN container, for testing.
 	$(CONTAINER_TOOL) build -t $(IMG) .
+
+.PHONY: container-multiarch
+container-multiarch: ## Build a multi-arch KubeSAN container, for release.
+	$(CONTAINER_TOOL) manifest create --amend $(IMG)
+	$(CONTAINER_TOOL) build $(CONTAINER_PLATFORMS) --manifest $(IMG) .
 
 ##@ Development
 
@@ -71,7 +83,9 @@ generate: controller-gen .generate.timestamp
 GROUPVERSION_INFO=api/v1alpha1/groupversion_info.go
 CRD_TYPES:=$(wildcard api/v1alpha1/*_types.go)
 
-.generate.timestamp: $(CONTROLLER_GEN) $(GROUPVERSION_INFO) $(CRD_TYPES)  ## Generate ClusterRole and CustomResourceDefinition YAML, and corresponding DeepCopy*() methods.
+# Remember to update tests/Containerfile if this rule changes the set of
+# generated output files.
+.generate.timestamp: $(CONTROLLER_GEN) $(GROUPVERSION_INFO) $(CRD_TYPES) ## Generate ClusterRole and CustomResourceDefinition YAML, and corresponding DeepCopy*() methods.
 	$(CONTROLLER_GEN) \
 		object:headerFile="hack/header.go.txt" \
 		crd:headerFile="hack/header.yaml.txt" \
