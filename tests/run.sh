@@ -327,9 +327,24 @@ EOF
             __setup_snapshotter "${current_cluster}"
         fi
 
+        # If pods aren't healthy quickly, dump some logs before failing to
+        # aid in debugging CI
+        __log_cyan "Waiting for KubeSAN pods to be running..."
+        if ksan-poll 1 240 '[[ -z "$(kubectl get --namespace kubesan-system pod --field-selector status.phase!=Running --no-headers --ignore-not-found)" ]]'; then
+            :
+        else
+            __log_red "KubeSAN pods not healthy!"
+            if (( ! sandbox )); then
+                kubectl describe --namespace kubesan-system pod
+                exit 1
+            fi
+        fi
+
         if (( sandbox )); then
+            __log_cyan "Entering sandbox..."
             __shell 32 true
         else
+            __log_cyan "Starting test $( basename "${test_resolved}" )..."
             set -o xtrace
             cd "$( dirname "${test_resolved}" )"
             # shellcheck disable=SC1090
