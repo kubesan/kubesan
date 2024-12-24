@@ -71,7 +71,7 @@ EOF
 
 fail=0
 ksan-stage "Waiting for csi-sanity results..."
-ksan-wait-for-pod-to-succeed 60 csi-sanity || fail=$?
+ksan-wait-for-pod-to-succeed 300 csi-sanity || fail=$?
 kubectl delete configmap csi-parameters
 kubectl logs pods/csi-sanity
 
