@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"regexp"
+	"slices"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -51,12 +52,12 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 		return nil, status.Error(codes.InvalidArgument, "missing/empty parameter \"lvmVolumeGroup\"")
 	}
 
-	volumeMode, err := getVolumeMode(req)
+	volumeMode, err := getVolumeMode(req.Parameters)
 	if err != nil {
 		return nil, err
 	}
 
-	volumeType, err := getVolumeType(req)
+	volumeType, err := getVolumeType(req.VolumeCapabilities)
 	if err != nil {
 		return nil, err
 	}
@@ -66,12 +67,12 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 		return nil, err
 	}
 
-	accessModes, err := getVolumeAccessModes(req)
+	accessModes, err := getVolumeAccessModes(req.VolumeCapabilities)
 	if err != nil {
 		return nil, err
 	}
 
-	capacity, _, _, err := validateCapacity(req.CapacityRange)
+	capacity, _, limit, err := validateCapacity(req.CapacityRange)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +109,17 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 		},
 	}
 
-	if err := s.client.Create(ctx, volume); err != nil && !errors.IsAlreadyExists(err) {
+	err = s.client.Create(ctx, volume)
+	if errors.IsAlreadyExists(err) {
+		// Check that the new request is idempotent to the existing volume
+		err = s.client.Get(ctx, types.NamespacedName{Name: name, Namespace: config.Namespace}, volume)
+		if err == nil {
+			if msg := validateVolume(volume, capacity, limit, volumeContents, req.VolumeCapabilities, req.Parameters); msg != "" {
+				err = status.Error(codes.AlreadyExists, msg)
+			}
+		}
+	}
+	if err != nil {
 		return nil, err
 	}
 
@@ -130,8 +141,8 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 	return resp, nil
 }
 
-func getVolumeMode(req *csi.CreateVolumeRequest) (v1alpha1.VolumeMode, error) {
-	mode := req.Parameters["mode"]
+func getVolumeMode(parameters map[string]string) (v1alpha1.VolumeMode, error) {
+	mode := parameters["mode"]
 	if mode == "" {
 		return v1alpha1.VolumeModeThin, nil
 	}
@@ -143,12 +154,12 @@ func getVolumeMode(req *csi.CreateVolumeRequest) (v1alpha1.VolumeMode, error) {
 	return v1alpha1.VolumeMode(mode), nil
 }
 
-func getVolumeType(req *csi.CreateVolumeRequest) (*v1alpha1.VolumeType, error) {
+func getVolumeType(capabilities []*csi.VolumeCapability) (*v1alpha1.VolumeType, error) {
 	var volumeType *v1alpha1.VolumeType
 	var isTypeBlock bool
 	var isTypeMount bool
 
-	for _, cap := range req.VolumeCapabilities {
+	for _, cap := range capabilities {
 		var vt v1alpha1.VolumeType
 
 		if block := cap.GetBlock(); block != nil {
@@ -209,8 +220,8 @@ func getVolumeContents(req *csi.CreateVolumeRequest) (*v1alpha1.VolumeContents, 
 	return volumeContents, nil
 }
 
-func getVolumeAccessModes(req *csi.CreateVolumeRequest) ([]v1alpha1.VolumeAccessMode, error) {
-	modes, err := kubesanslices.TryMap(req.VolumeCapabilities, getVolumeAccessMode)
+func getVolumeAccessModes(capabilities []*csi.VolumeCapability) ([]v1alpha1.VolumeAccessMode, error) {
+	modes, err := kubesanslices.TryMap(capabilities, getVolumeAccessMode)
 	if err != nil {
 		return nil, err
 	}
@@ -330,6 +341,55 @@ func (s *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolu
 	resp := &csi.DeleteVolumeResponse{}
 
 	return resp, nil
+}
+
+// Checks whether the existing volume is compatible with a capabilities array.
+// Returns "" if compatible, or a string describing an inconsistency.
+func validateCapabilities(volume *v1alpha1.Volume, capabilities []*csi.VolumeCapability) string {
+	if volumeType, err := getVolumeType(capabilities); err != nil || *volumeType != volume.Spec.Type {
+		return "incompatible volume type"
+	}
+
+	// A subset of access modes is still okay
+	accessModes, err := getVolumeAccessModes(capabilities)
+	if err != nil {
+		return "incomptible access modes"
+	}
+	for _, mode := range accessModes {
+		if !slices.Contains(volume.Spec.AccessModes, mode) {
+			return "incompatible access modes"
+		}
+	}
+
+	return ""
+}
+
+// Checks whether the existing volume is compatible with another creation
+// or validation request. Returns "" if compatible, or a string describing
+// an inconsistency if incompatible.
+func validateVolume(volume *v1alpha1.Volume, size int64, limit int64, source *v1alpha1.VolumeContents, capabilities []*csi.VolumeCapability, parameters map[string]string) string {
+	if size > volume.Spec.SizeBytes || (limit > 0 && limit < volume.Spec.SizeBytes) {
+		return "incompatible sizes"
+	}
+	switch {
+	case source == &volume.Spec.Contents: // same pointer
+	case source.Empty != nil && volume.Spec.Contents.Empty != nil: // match
+	case source.CloneVolume != nil && volume.Spec.Contents.CloneVolume != nil && *source.CloneVolume == *volume.Spec.Contents.CloneVolume: // match
+	case source.CloneSnapshot != nil && volume.Spec.Contents.CloneSnapshot != nil && *source.CloneSnapshot == *volume.Spec.Contents.CloneSnapshot: // match
+	default:
+		return "incompatible source contents"
+	}
+
+	lvmVolumeGroup := parameters["lvmVolumeGroup"]
+	if lvmVolumeGroup != volume.Spec.VgName {
+		return "incompatible parameter \"lvmVolumeGroup\""
+	}
+
+	if volumeMode, err := getVolumeMode(parameters); err != nil || volumeMode != volume.Spec.Mode {
+		return "incompatible parameter \"mode\""
+	}
+
+	return validateCapabilities(volume, capabilities)
 }
 
 // func (s *ControllerServer) createVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
