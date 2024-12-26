@@ -111,8 +111,10 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr Blo
 		log.Info("CreateBlob succeeded")
 
 		condition := conditionsv1.Condition{
-			Type:   conditionsv1.ConditionAvailable,
-			Status: corev1.ConditionTrue,
+			Type:    conditionsv1.ConditionAvailable,
+			Status:  corev1.ConditionTrue,
+			Reason:  "Created",
+			Message: "lvm logical volume created",
 		}
 		conditionsv1.SetStatusCondition(&volume.Status.Conditions, condition)
 

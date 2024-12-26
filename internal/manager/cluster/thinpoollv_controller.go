@@ -142,8 +142,10 @@ func (r *ThinPoolLvReconciler) createThinPoolLv(ctx context.Context, thinPoolLv 
 	}
 
 	condition := conditionsv1.Condition{
-		Type:   conditionsv1.ConditionAvailable,
-		Status: corev1.ConditionTrue,
+		Type:    conditionsv1.ConditionAvailable,
+		Status:  corev1.ConditionTrue,
+		Reason:  "Created",
+		Message: "thin pool logical volume created",
 	}
 	conditionsv1.SetStatusCondition(&thinPoolLv.Status.Conditions, condition)
 

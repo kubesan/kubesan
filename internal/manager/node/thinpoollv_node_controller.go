@@ -134,8 +134,10 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinPoolLvActivation(ctx context.Con
 			}
 
 			condition := conditionsv1.Condition{
-				Type:   v1alpha1.ThinPoolLvConditionActive,
-				Status: corev1.ConditionTrue,
+				Type:    v1alpha1.ThinPoolLvConditionActive,
+				Status:  corev1.ConditionTrue,
+				Reason:  "Activated",
+				Message: "thin pool activated",
 			}
 			conditionsv1.SetStatusCondition(&thinPoolLv.Status.Conditions, condition)
 
@@ -189,8 +191,10 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinPoolLvActivation(ctx context.Con
 			}
 
 			condition := conditionsv1.Condition{
-				Type:   v1alpha1.ThinPoolLvConditionActive,
-				Status: corev1.ConditionFalse,
+				Type:    v1alpha1.ThinPoolLvConditionActive,
+				Status:  corev1.ConditionFalse,
+				Reason:  "Deactivated",
+				Message: "thin pool deactivated",
 			}
 			conditionsv1.SetStatusCondition(&thinPoolLv.Status.Conditions, condition)
 
