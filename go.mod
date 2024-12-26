@@ -7,10 +7,8 @@ toolchain go1.22.2
 require (
 	github.com/container-storage-interface/spec v1.9.0
 	github.com/digitalocean/go-qemu v0.0.0-20230711162256-2e3d0186973e
-	github.com/openshift/custom-resource-status v1.1.2
 	google.golang.org/grpc v1.62.0
 	google.golang.org/protobuf v1.34.2
-	k8s.io/api v0.30.3
 	k8s.io/apimachinery v0.30.3
 	k8s.io/client-go v0.30.3
 	k8s.io/mount-utils v0.30.2
@@ -66,6 +64,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	k8s.io/api v0.30.3 // indirect
 	k8s.io/apiextensions-apiserver v0.30.3 // indirect
 	k8s.io/klog/v2 v2.130.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20240709000822-3c01b740850f // indirect
