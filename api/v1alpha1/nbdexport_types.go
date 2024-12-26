@@ -4,8 +4,6 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 )
 
 // Important: Run "make generate" to regenerate code after modifying this file
@@ -37,6 +35,10 @@ type NBDExportSpec struct {
 	Clients []string `json:"clients,omitempty"`
 }
 
+const (
+	NBDExportConditionAvailable = "Available"
+)
+
 type NBDExportStatus struct {
 	// The generation of the spec used to produce this status.  Useful
 	// as a witness when waiting for status to change.
@@ -49,7 +51,7 @@ type NBDExportStatus struct {
 	// +optional
 	// +listType=map
 	// +listMapKey=type
-	Conditions []conditionsv1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	// NBD URI for connecting to the NBD export, using IP address.
 	// write-once when Conditions["Available"] is first set

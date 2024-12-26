@@ -13,11 +13,10 @@ import (
 	"time"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/digitalocean/go-qemu/qmp"
-
-	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
@@ -285,7 +284,7 @@ func StopServer(ctx context.Context, id *ServerId) error {
 
 // Return true if no new clients should connect to this export
 func ExportDegraded(export *v1alpha1.NBDExport) bool {
-	return export.Status.URI != "" && !conditionsv1.IsStatusConditionTrue(export.Status.Conditions, conditionsv1.ConditionAvailable)
+	return export.Status.URI != "" && !meta.IsStatusConditionTrue(export.Status.Conditions, v1alpha1.NBDExportConditionAvailable)
 }
 
 // Return true if this node should stop serving the given export.

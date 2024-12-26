@@ -6,8 +6,6 @@ import (
 	"slices"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 )
 
 // Important: Run "make generate" to regenerate code after modifying this file
@@ -112,6 +110,10 @@ const (
 	VolumeAccessModeMultiNodeMultiWriter  VolumeAccessMode = "MultiNodeMultiWriter"
 )
 
+const (
+	VolumeConditionAvailable = "Available"
+)
+
 type VolumeStatus struct {
 	// The generation of the spec used to produce this status.  Useful
 	// as a witness when waiting for status to change.
@@ -126,7 +128,7 @@ type VolumeStatus struct {
 	// +optional
 	// +listType=map
 	// +listMapKey=type
-	Conditions []conditionsv1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	// Reflects the current size of the volume.
 	// +kubebuilder:validation:XValidation:rule=oldSelf<=self

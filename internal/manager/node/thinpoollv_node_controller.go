@@ -6,13 +6,12 @@ import (
 	"context"
 	"fmt"
 
-	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/commands"
@@ -57,7 +56,7 @@ func (r *ThinPoolLvNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// only run after the cluster controller has created the thin-pool
 
-	if !conditionsv1.IsStatusConditionTrue(thinPoolLv.Status.Conditions, conditionsv1.ConditionAvailable) {
+	if !meta.IsStatusConditionTrue(thinPoolLv.Status.Conditions, v1alpha1.ThinPoolLvConditionAvailable) {
 		return ctrl.Result{}, nil
 	}
 
@@ -133,13 +132,13 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinPoolLvActivation(ctx context.Con
 				return thinPoolLvShouldBeActive, err
 			}
 
-			condition := conditionsv1.Condition{
+			condition := metav1.Condition{
 				Type:    v1alpha1.ThinPoolLvConditionActive,
-				Status:  corev1.ConditionTrue,
+				Status:  metav1.ConditionTrue,
 				Reason:  "Activated",
 				Message: "thin pool activated",
 			}
-			conditionsv1.SetStatusCondition(&thinPoolLv.Status.Conditions, condition)
+			meta.SetStatusCondition(&thinPoolLv.Status.Conditions, condition)
 
 			thinPoolLv.Status.ActiveOnNode = config.LocalNodeName
 
@@ -190,13 +189,13 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinPoolLvActivation(ctx context.Con
 				return thinPoolLvShouldBeActive, err
 			}
 
-			condition := conditionsv1.Condition{
+			condition := metav1.Condition{
 				Type:    v1alpha1.ThinPoolLvConditionActive,
-				Status:  corev1.ConditionFalse,
+				Status:  metav1.ConditionFalse,
 				Reason:  "Deactivated",
 				Message: "thin pool deactivated",
 			}
-			conditionsv1.SetStatusCondition(&thinPoolLv.Status.Conditions, condition)
+			meta.SetStatusCondition(&thinPoolLv.Status.Conditions, condition)
 
 			thinPoolLv.Status.ActiveOnNode = ""
 

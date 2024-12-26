@@ -6,11 +6,11 @@ import (
 	"context"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
-	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -46,13 +46,13 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 	}
 
 	err := s.client.WatchSnapshotUntil(ctx, snapshot, func() bool {
-		return conditionsv1.IsStatusConditionTrue(snapshot.Status.Conditions, conditionsv1.ConditionAvailable)
+		return meta.IsStatusConditionTrue(snapshot.Status.Conditions, v1alpha1.SnapshotConditionAvailable)
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	condition := conditionsv1.FindStatusCondition(snapshot.Status.Conditions, conditionsv1.ConditionAvailable)
+	condition := meta.FindStatusCondition(snapshot.Status.Conditions, v1alpha1.SnapshotConditionAvailable)
 
 	resp := &csi.CreateSnapshotResponse{
 		Snapshot: &csi.Snapshot{

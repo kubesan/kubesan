@@ -4,10 +4,6 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	//	kubesanslices "gitlab.com/kubesan/kubesan/internal/common/slices"
-
-	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 )
 
 // Important: Run "make generate" to regenerate code after modifying this file
@@ -112,7 +108,8 @@ type ThinLvContentsSnapshot struct {
 }
 
 const (
-	ThinPoolLvConditionActive = "Active"
+	ThinPoolLvConditionAvailable = "Available"
+	ThinPoolLvConditionActive    = "Active"
 )
 
 type ThinPoolLvStatus struct {
@@ -128,7 +125,7 @@ type ThinPoolLvStatus struct {
 	// +optional
 	// +listType=map
 	// +listMapKey=type
-	Conditions []conditionsv1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	// The name of the node where the LVM thin pool LV is active, along with any active LVM thin LVs; or "".
 	// +optional

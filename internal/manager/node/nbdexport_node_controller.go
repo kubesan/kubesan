@@ -5,14 +5,13 @@ package node
 import (
 	"context"
 
-	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
@@ -69,13 +68,13 @@ func (r *NBDExportNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	if export.Spec.Path == "" {
-		condition := conditionsv1.Condition{
-			Type:    conditionsv1.ConditionAvailable,
-			Status:  corev1.ConditionFalse,
+		condition := metav1.Condition{
+			Type:    v1alpha1.NBDExportConditionAvailable,
+			Status:  metav1.ConditionFalse,
 			Reason:  "Stopping",
 			Message: "server stop requested, waiting for clients to disconnect",
 		}
-		conditionsv1.SetStatusCondition(&export.Status.Conditions, condition)
+		meta.SetStatusCondition(&export.Status.Conditions, condition)
 		if err := r.statusUpdate(ctx, export); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -94,13 +93,13 @@ func (r *NBDExportNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			return ctrl.Result{}, err
 		}
 		export.Status.URI = uri
-		condition := conditionsv1.Condition{
-			Type:    conditionsv1.ConditionAvailable,
-			Status:  corev1.ConditionTrue,
+		condition := metav1.Condition{
+			Type:    v1alpha1.NBDExportConditionAvailable,
+			Status:  metav1.ConditionTrue,
 			Reason:  "Ready",
 			Message: "NBD Export is ready",
 		}
-		conditionsv1.SetStatusCondition(&export.Status.Conditions, condition)
+		meta.SetStatusCondition(&export.Status.Conditions, condition)
 		if err = r.statusUpdate(ctx, export); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -108,13 +107,13 @@ func (r *NBDExportNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	log.Info("Checking NBD export status")
 	if err := nbd.CheckServerHealth(ctx, serverId); err != nil {
-		condition := conditionsv1.Condition{
-			Type:    conditionsv1.ConditionAvailable,
-			Status:  corev1.ConditionFalse,
+		condition := metav1.Condition{
+			Type:    v1alpha1.NBDExportConditionAvailable,
+			Status:  metav1.ConditionFalse,
 			Reason:  "DeviceError",
 			Message: "unexpected NBD server error",
 		}
-		conditionsv1.SetStatusCondition(&export.Status.Conditions, condition)
+		meta.SetStatusCondition(&export.Status.Conditions, condition)
 		if err := r.statusUpdate(ctx, export); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -127,13 +126,13 @@ func (r *NBDExportNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 func (r *NBDExportNodeReconciler) reconcileDeleting(ctx context.Context, export *v1alpha1.NBDExport) error {
 	// Mark the export unavailable, so no new clients attach
 	if !nbd.ExportDegraded(export) {
-		condition := conditionsv1.Condition{
-			Type:    conditionsv1.ConditionAvailable,
-			Status:  corev1.ConditionFalse,
+		condition := metav1.Condition{
+			Type:    v1alpha1.NBDExportConditionAvailable,
+			Status:  metav1.ConditionFalse,
 			Reason:  "Deleting",
 			Message: "deletion requested, waiting for clients to disconnect",
 		}
-		conditionsv1.SetStatusCondition(&export.Status.Conditions, condition)
+		meta.SetStatusCondition(&export.Status.Conditions, condition)
 		if err := r.statusUpdate(ctx, export); err != nil {
 			return err
 		}
