@@ -55,7 +55,7 @@ func RunClusterControllers() error {
 		// the manager stops, so would be fine to enable this option. However,
 		// if you are doing or is intended to do any operation such as perform cleanups
 		// after the manager stops then its usage might be unsafe.
-		// LeaderElectionReleaseOnCancel: true,
+		LeaderElectionReleaseOnCancel: true,
 	}
 
 	return runManager(ctrlOpts, []func(ctrl.Manager) error{
