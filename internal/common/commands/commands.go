@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path"
@@ -15,6 +14,7 @@ import (
 	"strings"
 
 	k8serror "k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type Output struct {
@@ -78,7 +78,8 @@ func PathExistsOnHost(hostPath string) (bool, error) {
 }
 
 func Dmsetup(args ...string) (Output, error) {
-	log.Printf("dmsetup command: %v", args)
+	log := log.FromContext(context.Background())
+	log.Info("dmsetup command", "args", args)
 	// Use the host's dmsetup
 	return RunOnHost(append([]string{"dmsetup"}, args...)...)
 }
@@ -165,7 +166,8 @@ func LvmCreateProfile(name string, contents string) error {
 }
 
 func Lvm(args ...string) (Output, error) {
-	log.Printf("LVM command: %v", args)
+	log := log.FromContext(context.Background())
+	log.Info("LVM command", "args", args)
 	// Use the host's lvm
 	return RunOnHost(append([]string{"lvm"}, args...)...)
 }
@@ -252,7 +254,8 @@ func WithLvmLvActivated(vgName string, lvName string, op func() error) (err erro
 
 // Run a command with nbd-client.
 func nbdClient(args ...string) (Output, error) {
-	log.Printf("nbd-client command: %v", args)
+	log := log.FromContext(context.Background())
+	log.Info("nbd-client command", "args", args)
 	// nbd-client lives in our container, so sharing --mount (part
 	// of --all) would cause ENOENT (if the host has not installed
 	// nbd) or other problems (if the host version lacks -i). But
@@ -281,7 +284,8 @@ func NBDClientConnect(uri string) (string, error) {
 
 	match := nbdClientConnectedPattern.FindSubmatch(output.Combined)
 	if match == nil {
-		log.Printf("nbd-client output: %s", output.Combined)
+		log := log.FromContext(context.Background())
+		log.Info("nbd-client output", "output", output.Combined)
 		return "", k8serror.NewBadRequest("could not parse NBD device from nbd-client")
 	}
 
