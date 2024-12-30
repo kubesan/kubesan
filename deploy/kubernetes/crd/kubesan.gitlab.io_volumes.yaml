@@ -250,6 +250,9 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              nbdExport:
+                description: The name of any NBDExport serving this volume.
+                type: string
               observedGeneration:
                 description: |-
                   The generation of the spec used to produce this status.  Useful
