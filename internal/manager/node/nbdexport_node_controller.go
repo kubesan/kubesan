@@ -79,15 +79,10 @@ func (r *NBDExportNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	serverId := &nbd.ServerId{
-		Node:   config.LocalNodeName,
-		Export: export.Spec.Export,
-	}
-
 	if export.Status.URI == "" {
 		log.Info("Starting NBD export")
 
-		uri, err := nbd.StartServer(ctx, serverId, export.Spec.Path)
+		uri, err := nbd.StartExport(ctx, export.Spec.Export, export.Spec.Path)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -106,7 +101,7 @@ func (r *NBDExportNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if len(export.Spec.Clients) > 0 {
 		log.Info("Checking NBD export status")
-		if err := nbd.CheckServerHealth(ctx, serverId); err != nil {
+		if err := nbd.CheckExportHealth(ctx, export.Spec.Export); err != nil {
 			// Don't check prior state of condition["available"],
 			// because this Reason takes priority even if the
 			// export had already started clean shutdown
@@ -148,11 +143,7 @@ func (r *NBDExportNodeReconciler) reconcileDeleting(ctx context.Context, export 
 		return nil // wait until no longer attached
 	}
 
-	serverId := &nbd.ServerId{
-		Node:   config.LocalNodeName,
-		Export: export.Spec.Export,
-	}
-	if err := nbd.StopServer(ctx, serverId); err != nil {
+	if err := nbd.StopExport(ctx, export.Spec.Export); err != nil {
 		return err
 	}
 
