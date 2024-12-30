@@ -59,9 +59,7 @@ func (r *NBDExportNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, err
 	}
 
-	if !controllerutil.ContainsFinalizer(export, config.Finalizer) {
-		controllerutil.AddFinalizer(export, config.Finalizer)
-
+	if controllerutil.AddFinalizer(export, config.Finalizer) {
 		if err := r.Update(ctx, export); err != nil {
 			return ctrl.Result{}, err
 		}

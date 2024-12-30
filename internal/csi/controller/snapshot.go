@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
@@ -41,6 +42,7 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 			SourceVolume: req.SourceVolumeId,
 		},
 	}
+	controllerutil.AddFinalizer(snapshot, config.Finalizer)
 
 	if err := s.client.Create(ctx, snapshot); err != nil && !errors.IsAlreadyExists(err) {
 		return nil, err

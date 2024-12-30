@@ -70,6 +70,7 @@ func (m *ThinBlobManager) createThinPoolLv(ctx context.Context, name string, siz
 			SizeBytes: paddedSize,
 		},
 	}
+	controllerutil.AddFinalizer(thinPoolLv, config.Finalizer)
 
 	if err := controllerutil.SetControllerReference(m.owner, thinPoolLv, m.scheme); err != nil {
 		return nil, err
