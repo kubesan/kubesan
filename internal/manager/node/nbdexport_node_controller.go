@@ -65,7 +65,8 @@ func (r *NBDExportNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	if export.Spec.Path == "" {
+	if export.Spec.Path == "" && meta.IsStatusConditionTrue(export.Status.Conditions, v1alpha1.NBDExportConditionAvailable) {
+		// Set condition["available"] to false only if it was true
 		condition := metav1.Condition{
 			Type:    v1alpha1.NBDExportConditionAvailable,
 			Status:  metav1.ConditionFalse,
@@ -103,19 +104,25 @@ func (r *NBDExportNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	log.Info("Checking NBD export status")
-	if err := nbd.CheckServerHealth(ctx, serverId); err != nil {
-		condition := metav1.Condition{
-			Type:    v1alpha1.NBDExportConditionAvailable,
-			Status:  metav1.ConditionFalse,
-			Reason:  "DeviceError",
-			Message: "unexpected NBD server error",
-		}
-		meta.SetStatusCondition(&export.Status.Conditions, condition)
-		if err := r.statusUpdate(ctx, export); err != nil {
+	if len(export.Spec.Clients) > 0 {
+		log.Info("Checking NBD export status")
+		if err := nbd.CheckServerHealth(ctx, serverId); err != nil {
+			// Don't check prior state of condition["available"],
+			// because this Reason takes priority even if the
+			// export had already started clean shutdown
+			condition := metav1.Condition{
+				Type:    v1alpha1.NBDExportConditionAvailable,
+				Status:  metav1.ConditionFalse,
+				Reason:  "DeviceError",
+				Message: "unexpected NBD server error",
+			}
+			if meta.SetStatusCondition(&export.Status.Conditions, condition) {
+				if err := r.statusUpdate(ctx, export); err != nil {
+					return ctrl.Result{}, err
+				}
+			}
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
