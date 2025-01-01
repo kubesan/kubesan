@@ -2,6 +2,7 @@
 
 ksan-supported-modes # TODO add Thin when cloning is implemented
 
+ksan-stage 'Creating volume 1...'
 ksan-create-rwo-volume test-pvc-1 64Mi
 ksan-fill-volume test-pvc-1 64
 

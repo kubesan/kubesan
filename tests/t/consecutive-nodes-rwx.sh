@@ -6,6 +6,7 @@
 
 ksan-supported-modes Linear Thin
 
+ksan-stage 'Creating volume...'
 ksan-create-rwx-volume test-pvc 64Mi
 
 for i in "${!NODES[@]}"; do

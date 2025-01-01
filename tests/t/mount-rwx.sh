@@ -6,25 +6,8 @@ ksan-stage 'Provisioning volumes...'
 
 # Two distinct volumes, to ensure parallel cross-node NBD devices work
 
-for i in 1 2; do
-    kubectl create -f - <<EOF
-    apiVersion: v1
-    kind: PersistentVolumeClaim
-    metadata:
-      name: test-pvc-$i
-    spec:
-      storageClassName: kubesan
-      accessModes:
-        - ReadWriteMany
-      resources:
-        requests:
-          storage: $(( 64 * i ))Mi
-      volumeMode: Block
-EOF
-done
-
-ksan-wait-for-pvc-to-be-bound 300 test-pvc-1
-ksan-wait-for-pvc-to-be-bound 300 test-pvc-2
+ksan-create-rwx-volume test-pvc-1 64Mi
+ksan-create-rwx-volume test-pvc-2 128Mi
 
 ksan-stage 'Mounting volumes read-write on all nodes...'
 

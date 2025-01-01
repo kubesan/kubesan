@@ -62,6 +62,7 @@ ensure_pod_is_writing() {
 
 # ACTUAL TEST
 
+ksan-stage 'Creating volume...'
 ksan-create-rwx-volume test-pvc 64Mi
 
 ksan-stage 'Launching pod mounting the volume and writing to it...'
