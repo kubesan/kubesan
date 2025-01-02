@@ -300,10 +300,25 @@ images:
   - name: quay.io/kubesan/kubesan
     newName: ${ksanregistry}/kubesan/kubesan
     newTag: test
+patches:
+  # Slow down liveness probe to once a minute, instead of every 2 seconds
+  - target:
+      kind: Deployment
+      name: csi-controller-plugin
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/livenessProbe/periodSeconds
+        value: 60
+  - target:
+      kind: DaemonSet
+      name: csi-node-plugin
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/livenessProbe/periodSeconds
+        value: 60
 EOF
             if (( requires_image_pull_policy_always )); then
                 cat >>${temp_dir}/kustomization.yaml <<EOF
-patches:
   - target:
       kind: Deployment
     patch: |-

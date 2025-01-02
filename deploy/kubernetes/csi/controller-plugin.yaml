@@ -42,6 +42,18 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+          ports:
+            - containerPort: 9808
+              name: healthz
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 10
+            timeoutSeconds: 3
+            periodSeconds: 2
           volumeMounts:
             - name: socket-dir
               mountPath: /run/csi
@@ -77,6 +89,20 @@ spec:
           image: registry.k8s.io/sig-storage/csi-snapshotter:v6.3.3
           args:
             - --extra-create-metadata  # to get VS/VSC info in CreateSnapshot()
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /run/csi
+          # TODO(user): Configure the resources accordingly based on the project requirements.
+          # More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+          resources:
+            limits:
+              cpu: 500m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 64Mi
+        - name: liveness-probe
+          image: registry.k8s.io/sig-storage/livenessprobe:v2.14.0
           volumeMounts:
             - name: socket-dir
               mountPath: /run/csi
