@@ -50,8 +50,6 @@ spec:
               mountPath: /run/csi
             - name: dev
               mountPath: /dev
-            - name: run-kubesan-nbd
-              mountPath: /run/kubesan/nbd
           securityContext:
             privileged: true
           # TODO(user): Configure the resources accordingly based on the project requirements.
@@ -101,7 +99,3 @@ spec:
           hostPath:
             path: /dev
             type: Directory
-        - name: run-kubesan-nbd
-          hostPath:
-            path: /run/kubesan/nbd
-            type: DirectoryOrCreate
