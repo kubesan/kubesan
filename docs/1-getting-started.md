@@ -208,6 +208,7 @@ metadata:
 provisioner: kubesan.gitlab.io
 parameters:
   lvmVolumeGroup: my-vg
+allowVolumeExpansion: true
 ```
 
 If you are setting the `mode` parameter to `Linear`, set the StorageClass
@@ -273,9 +274,14 @@ storageclass.
 The following matrix documents setups that KubeSAN supports or plans to
 support in a future release:
 
-| Description         | RWO  | RWX  | ROX     | Expand  | Snapshots | Clone   |
-| :------------------ | :--- | :--- | :------ | :------ | :-------- | :------ |
-| LinearLV Block      | Yes  | Yes  | Planned | Planned | No        | No      |
-| LinearLV Filesystem | Yes  | No   | Planned | Planned | No        | No      |
-| ThinLV Block        | Yes  | Yes  | Planned | Planned | Planned   | Planned |
-| ThinLV Filesystem   | Yes  | No   | Planned | Planned | Planned   | Planned |
+| Description         | RWO  | RWX  | ROX     | Online Expand  | Offline Expand | Snapshots/Clonable | Creation by Contents    |
+| :------------------ | :--- | :--- | :------ | :------ | :------ | :--------- | :---------- |
+| LinearLV Block      | Yes  | Yes  | Planned | No      | Yes     | No         | Planned     |
+| LinearLV Filesystem | Yes  | No   | Planned | No      | Planned | No         | No          |
+| ThinLV Block        | Yes  | Yes  | Planned | Yes     | Yes     | Yes        | Planned     |
+| ThinLV Filesystem   | Yes  | No   | Planned | Planned | Planned | No         | No          |
+
+There are two parts to volume cloning: Clonable represents whether a
+volume can serve as the source of another volume at creation time,
+while Creation by Contents represents whether a volume can be created
+by specifying contents from a snapshot or a clonable volume.
