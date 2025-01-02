@@ -127,9 +127,12 @@ __setup_nbd_storage() {
 
     __log_cyan "Starting NBD servers to serve as shared block devices..."
 
+    # Our test cluster only has 5G disks with quite a bit already used
+    # by the OS; so we use only 2G per node to form cluster-wide
+    # shared storage.
     for (( i = 0; i < 2; ++i )); do
         port=$(( 10809 + i ))
-        __${deploy_tool}_ssh "${NODES[0]}" "
+        __${deploy_tool}_ssh "${NODES[i]}" "
             sudo mkdir -p /mnt/vda1
             sudo truncate -s 0 /mnt/vda1/backing${i}.raw
             sudo truncate -s 4G /mnt/vda1/backing${i}.raw
@@ -159,7 +162,7 @@ __setup_nbd_storage() {
             sudo cp -r /dev/nbd0 /dev/my-san-lun  # good for demos
 
             __run_in_test_container --net host -- \
-                nbd-client ${NODE_IPS[0]} 10810 /dev/nbd1
+                nbd-client ${NODE_IPS[1]} 10810 /dev/nbd1
             sudo ln -s /dev/nbd1 /dev/kubesan-drive-1
             "
     done
