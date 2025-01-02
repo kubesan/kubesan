@@ -127,15 +127,20 @@ __setup_nbd_storage() {
 
     __log_cyan "Starting NBD servers to serve as shared block devices..."
 
-    # Our test cluster only has 5G disks with quite a bit already used
+    # Our test cluster only has 6G disks with quite a bit already used
     # by the OS; so we use only 2G per node to form cluster-wide
-    # shared storage.
+    # shared storage.  Intentionally dirty the storage, so we can
+    # check whether lvm wipes it.
     for (( i = 0; i < 2; ++i )); do
         port=$(( 10809 + i ))
         __${deploy_tool}_ssh "${NODES[i]}" "
             sudo mkdir -p /mnt/vda1
             sudo truncate -s 0 /mnt/vda1/backing${i}.raw
-            sudo truncate -s 4G /mnt/vda1/backing${i}.raw
+            sudo chmod o+w /mnt/vda1/backing${i}.raw
+            printf %$((1024*1024))d 0 > file
+            for (( i=0; i<2048; i++ )); do cat file; done >> /mnt/vda1/backing${i}.raw
+            rm file
+            sudo chmod o-w /mnt/vda1/backing${i}.raw
             __run_in_test_container_async --net host \
                 -v /mnt/vda1/backing${i}.raw:/disk${i} -- \
                 qemu-nbd --cache=none --format=raw --persistent \

@@ -73,7 +73,7 @@ __start_minikube_cluster() {
         --driver=kvm2 \
         --cpus=2 \
         --memory=2g \
-        --disk-size=5g \
+        --disk-size=6g \
         --keep-context \
         --wait="all" \
         --nodes="${num_nodes}" \
