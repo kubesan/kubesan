@@ -190,8 +190,8 @@ export -f __setup_nbd_storage
 __setup_snapshotter() {
     __log_cyan "Enabling volume snapshot support in the cluster..."
     base_url=https://github.com/kubernetes-csi/external-snapshotter
-    kubectl create -k "${base_url}/client/config/crd?ref=v7.0.1"
-    kubectl create -k "${base_url}/deploy/kubernetes/snapshot-controller?ref=v7.0.1"
+    kubectl create -k "${base_url}/client/config/crd?ref=v8.2.0"
+    kubectl create -k "${base_url}/deploy/kubernetes/snapshot-controller?ref=v8.2.0"
     unset base_url
 
     __log_cyan "Creating volume snapshot class..."

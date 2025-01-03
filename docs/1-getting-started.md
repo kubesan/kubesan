@@ -152,8 +152,8 @@ Kubernetes) do not.
 If you need to create them, use these commands to do so:
 
 ```console
-$ kubectl apply -k "https://github.com/kubernetes-csi/external-snapshotter/client/config/crd?ref=v7.0.1"
-$ kubectl apply -k "https://github.com/kubernetes-csi/external-snapshotter/deploy/kubernetes/snapshot-controller?ref=v7.0.1"
+$ kubectl apply -k "https://github.com/kubernetes-csi/external-snapshotter/client/config/crd?ref=v8.2.0"
+$ kubectl apply -k "https://github.com/kubernetes-csi/external-snapshotter/deploy/kubernetes/snapshot-controller?ref=v8.2.0"
 ```
 
 Then create a `VolumeSnapshotClass` that uses the KubeSAN CSI plugin:
