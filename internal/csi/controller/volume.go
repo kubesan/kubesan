@@ -392,6 +392,67 @@ func validateVolume(volume *v1alpha1.Volume, size int64, limit int64, source *v1
 	return validateCapabilities(volume, capabilities)
 }
 
+func (s *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
+	// validate request
+	namespacedName, err := validate.ValidateVolumeID(req.VolumeId)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validate.ValidateVolumeContext(req.VolumeContext); err != nil {
+		return nil, err
+	}
+
+	if len(req.VolumeCapabilities) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "missing capability to verify")
+	}
+
+	// At present, we don't use secrets, so this should be empty.
+	if len(req.Secrets) > 0 {
+		return nil, status.Error(codes.InvalidArgument, "unexpected secrets")
+	}
+
+	// We don't advertise MODIFY_VOLUME, so mutable parameters are unexpected.
+	if len(req.MutableParameters) > 0 {
+		return nil, status.Error(codes.InvalidArgument, "no mutable parameters supported")
+	}
+
+	// lookup volume
+	volume := &v1alpha1.Volume{}
+	err = s.client.Get(ctx, namespacedName, volume)
+	if errors.IsNotFound(err) {
+		return nil, status.Error(codes.NotFound, "volume not found")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Check input compatibility with volume.
+	if msg := validateVolume(volume, volume.Spec.SizeBytes, 0, &volume.Spec.Contents, req.VolumeCapabilities, req.Parameters); msg != "" {
+		return &csi.ValidateVolumeCapabilitiesResponse{
+			Message: msg,
+		}, nil
+	}
+
+	// Copy out only the capabilities and parameters we actually checked.
+	return &csi.ValidateVolumeCapabilitiesResponse{
+		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
+			VolumeCapabilities: req.VolumeCapabilities,
+			Parameters:         copyKnownParameters(req.Parameters),
+		},
+	}, nil
+}
+
+func copyKnownParameters(parameters map[string]string) map[string]string {
+	result := make(map[string]string, len(parameters))
+	for key, value := range parameters {
+		if key == "lvmVolumeGroup" || key == "mode" {
+			result[key] = value
+		}
+	}
+	return result
+}
+
 // func (s *ControllerServer) createVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 // 	// TODO: Reject unknown parameters in req.Parameters that *don't* start with `csi.storage.k8s.io/`.
 
