@@ -9,7 +9,7 @@ RUN ln -s csi-test-5.3.0 csi-test && cd csi-test && make
 
 FROM quay.io/fedora/fedora:40
 
-RUN dnf install -qy fio strace nbd nmap-ncat qemu-img && dnf clean all
+RUN dnf install -qy e2fsprogs fio nbd nmap-ncat qemu-img strace util-linux-core && dnf clean all
 
 COPY --chmod=744 scripts ./
 COPY --from=builder /csi-sanity/csi-test/cmd/csi-sanity/csi-sanity ./
