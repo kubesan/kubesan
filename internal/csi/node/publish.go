@@ -19,8 +19,12 @@ import (
 func (s *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	// validate request
 
-	if req.VolumeId == "" {
-		return nil, status.Error(codes.InvalidArgument, "must specify volume id")
+	if _, err := validate.ValidateVolumeID(req.VolumeId); err != nil {
+		return nil, err
+	}
+
+	if err := validate.ValidateVolumeContext(req.PublishContext); err != nil {
+		return nil, err
 	}
 
 	if req.TargetPath == "" {
@@ -73,8 +77,8 @@ func (s *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublish
 func (s *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	// validate request
 
-	if req.VolumeId == "" {
-		return nil, status.Error(codes.InvalidArgument, "must specify volume id")
+	if _, err := validate.ValidateVolumeID(req.VolumeId); err != nil {
+		return nil, err
 	}
 
 	if req.TargetPath == "" {

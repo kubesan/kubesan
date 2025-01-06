@@ -11,7 +11,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/mount-utils"
 
@@ -24,8 +23,13 @@ import (
 func (s *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	// validate request
 
-	if req.VolumeId == "" {
-		return nil, status.Error(codes.InvalidArgument, "must specify volume id")
+	namespacedName, err := validate.ValidateVolumeID(req.VolumeId)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validate.ValidateVolumeContext(req.PublishContext); err != nil {
+		return nil, err
 	}
 
 	if req.StagingTargetPath == "" {
@@ -39,8 +43,8 @@ func (s *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolu
 	// attach volume to local node
 
 	volume := &v1alpha1.Volume{}
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		if err := s.client.Get(ctx, types.NamespacedName{Name: req.VolumeId, Namespace: config.Namespace}, volume); err != nil {
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := s.client.Get(ctx, namespacedName, volume); err != nil {
 			if errors.IsNotFound(err) {
 				return status.Error(codes.NotFound, "volume does not exist")
 			}
@@ -100,8 +104,9 @@ func (s *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolu
 func (s *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	// validate request
 
-	if req.VolumeId == "" {
-		return nil, status.Error(codes.InvalidArgument, "must specify volume id")
+	namespacedName, err := validate.ValidateVolumeID(req.VolumeId)
+	if err != nil {
+		return nil, err
 	}
 
 	if req.StagingTargetPath == "" {
@@ -139,7 +144,7 @@ func (s *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstage
 
 	volume := &v1alpha1.Volume{}
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		if err := s.client.Get(ctx, types.NamespacedName{Name: req.VolumeId, Namespace: config.Namespace}, volume); err != nil {
+		if err := s.client.Get(ctx, namespacedName, volume); err != nil {
 			if errors.IsNotFound(err) {
 				return status.Error(codes.NotFound, "volume does not exist")
 			}

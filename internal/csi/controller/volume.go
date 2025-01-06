@@ -24,6 +24,7 @@ import (
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
 	kubesanslices "gitlab.com/kubesan/kubesan/internal/common/slices"
+	"gitlab.com/kubesan/kubesan/internal/csi/common/validate"
 )
 
 var (
@@ -73,6 +74,11 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 	capacity, _, _, err := validateCapacity(req.CapacityRange)
 	if err != nil {
 		return nil, err
+	}
+
+	// We don't advertise MODIFY_VOLUME, so mutable parameters are unexpected.
+	if len(req.MutableParameters) > 0 {
+		return nil, status.Error(codes.InvalidArgument, "no mutable parameters supported")
 	}
 
 	// Kubernetes object names are typically DNS Subdomain Names (RFC
@@ -183,10 +189,16 @@ func getVolumeContents(req *csi.CreateVolumeRequest) (*v1alpha1.VolumeContents, 
 	if req.VolumeContentSource == nil {
 		volumeContents.Empty = &v1alpha1.VolumeContentsEmpty{}
 	} else if source := req.VolumeContentSource.GetVolume(); source != nil {
+		if _, err := validate.ValidateVolumeID(source.VolumeId); err != nil {
+			return nil, err
+		}
 		volumeContents.CloneVolume = &v1alpha1.VolumeContentsCloneVolume{
 			SourceVolume: source.VolumeId,
 		}
 	} else if source := req.VolumeContentSource.GetSnapshot(); source != nil {
+		if _, err := validate.ValidateSnapshotID(source.SnapshotId); err != nil {
+			return nil, err
+		}
 		volumeContents.CloneSnapshot = &v1alpha1.VolumeContentsCloneSnapshot{
 			SourceSnapshot: source.SnapshotId,
 		}
