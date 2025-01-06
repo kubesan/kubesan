@@ -9,14 +9,13 @@ import (
 	"context"
 	"fmt"
 
-	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/commands"
@@ -78,7 +77,7 @@ func (r *ThinPoolLvReconciler) reconcileNotDeleting(ctx context.Context, thinPoo
 
 	// create LVM thin pool LV
 
-	if !conditionsv1.IsStatusConditionTrue(thinPoolLv.Status.Conditions, conditionsv1.ConditionAvailable) {
+	if !meta.IsStatusConditionTrue(thinPoolLv.Status.Conditions, v1alpha1.ThinPoolLvConditionAvailable) {
 		err := r.createThinPoolLv(ctx, thinPoolLv)
 		if err != nil {
 			return err
@@ -91,7 +90,7 @@ func (r *ThinPoolLvReconciler) reconcileNotDeleting(ctx context.Context, thinPoo
 func (r *ThinPoolLvReconciler) reconcileDeleting(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv) error {
 	// wait for node controller to deactivate thin-pool so there are no races
 
-	if conditionsv1.IsStatusConditionTrue(thinPoolLv.Status.Conditions, v1alpha1.ThinPoolLvConditionActive) {
+	if meta.IsStatusConditionTrue(thinPoolLv.Status.Conditions, v1alpha1.ThinPoolLvConditionActive) {
 		return nil
 	}
 
@@ -141,11 +140,13 @@ func (r *ThinPoolLvReconciler) createThinPoolLv(ctx context.Context, thinPoolLv 
 		return err
 	}
 
-	condition := conditionsv1.Condition{
-		Type:   conditionsv1.ConditionAvailable,
-		Status: corev1.ConditionTrue,
+	condition := metav1.Condition{
+		Type:    v1alpha1.ThinPoolLvConditionAvailable,
+		Status:  metav1.ConditionTrue,
+		Reason:  "Created",
+		Message: "thin pool logical volume created",
 	}
-	conditionsv1.SetStatusCondition(&thinPoolLv.Status.Conditions, condition)
+	meta.SetStatusCondition(&thinPoolLv.Status.Conditions, condition)
 
 	if err := r.statusUpdate(ctx, thinPoolLv); err != nil {
 		return err

@@ -5,15 +5,14 @@ package cluster
 import (
 	"context"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	conditionsv1 "github.com/openshift/custom-resource-status/conditions/v1"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
@@ -96,7 +95,7 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr Blo
 
 	// create LVM LV if necessary
 
-	if !conditionsv1.IsStatusConditionTrue(volume.Status.Conditions, conditionsv1.ConditionAvailable) {
+	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable) {
 		log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
 		err := blobMgr.CreateBlob(ctx, volume.Name, volume.Spec.SizeBytes)
@@ -110,11 +109,13 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr Blo
 
 		log.Info("CreateBlob succeeded")
 
-		condition := conditionsv1.Condition{
-			Type:   conditionsv1.ConditionAvailable,
-			Status: corev1.ConditionTrue,
+		condition := metav1.Condition{
+			Type:    v1alpha1.VolumeConditionAvailable,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Created",
+			Message: "lvm logical volume created",
 		}
-		conditionsv1.SetStatusCondition(&volume.Status.Conditions, condition)
+		meta.SetStatusCondition(&volume.Status.Conditions, condition)
 
 		volume.Status.SizeBytes = volume.Spec.SizeBytes // TODO report actual size?
 
