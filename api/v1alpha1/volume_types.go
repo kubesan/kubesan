@@ -112,6 +112,7 @@ const (
 
 const (
 	VolumeConditionAvailable = "Available"
+	VolumeConditionAbnormal  = "Abnormal"
 )
 
 type VolumeStatus struct {
@@ -123,6 +124,7 @@ type VolumeStatus struct {
 	// Available: The LVM volume has been created
 	// DataSourceCompleted: Any data source has been copied into the LVM,
 	// so that it is now ready to be attached to nodes
+	// Abnormal: Indicates the health of a volume
 	// +patchMergeKey=type
 	// +patchStrategy=merge
 	// +optional
