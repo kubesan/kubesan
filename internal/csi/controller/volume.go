@@ -28,6 +28,16 @@ import (
 	"gitlab.com/kubesan/kubesan/internal/csi/common/validate"
 )
 
+const (
+	// TODO: It would be nice to use:
+	// vgs --devicesfile=$VG --options=vg_extent_size --no-heading --no-suffix --units=b $VG
+	// to determine the PE size at runtime, as well as validate that
+	// the VG has properly been locked.  But doing that from the CSI
+	// process requires privileges that for now we have left to only
+	// the managers.  So we hard-code the default 4MiB extent size.
+	defaultExtentSize = 4 * 1024 * 1024
+)
+
 var (
 	pvcNamePattern = regexp.MustCompile(`^pvc-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
 )
@@ -72,7 +82,7 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 		return nil, err
 	}
 
-	capacity, _, limit, err := validateCapacity(req.CapacityRange)
+	capacity, limit, err := validateCapacity(req.CapacityRange, defaultExtentSize)
 	if err != nil {
 		return nil, err
 	}
@@ -257,14 +267,15 @@ func getVolumeAccessMode(capability *csi.VolumeCapability) (v1alpha1.VolumeAcces
 	}
 }
 
-func validateCapacity(capacityRange *csi.CapacityRange) (capacity int64, minCapacity int64, maxCapacity int64, err error) {
+func validateCapacity(capacityRange *csi.CapacityRange, extentSize int64) (capacity, limit int64, err error) {
+	var minCapacity, maxCapacity int64
 	if capacityRange == nil {
 		// The capacity_range field is OPTIONAL in the CSI spec and the
 		// plugin MAY choose an implementation-defined capacity range.
 		// The csi-sanity test suite assumes the plugin chooses the
 		// capacity range, so we have to pick a number here instead of
 		// returning an error.
-		var gigabyte int64 = 1024 * 1024 * 1024
+		const gigabyte int64 = 1024 * 1024 * 1024
 		minCapacity = gigabyte
 		maxCapacity = gigabyte
 	} else {
@@ -272,21 +283,36 @@ func validateCapacity(capacityRange *csi.CapacityRange) (capacity int64, minCapa
 		maxCapacity = capacityRange.LimitBytes
 	}
 
+	// CSI says that if capacityRange was provided, at least one of the
+	// two parameters must be non-zero, and that negatives aren't allowed.
+	if minCapacity == 0 && maxCapacity == 0 {
+		return -1, -1, status.Error(codes.InvalidArgument, "at least one of minimum and maximum capacity must be given")
+	} else if minCapacity < 0 || maxCapacity < 0 {
+		return -1, -1, status.Error(codes.InvalidArgument, "capacity must be non-negative")
+	}
+
+	limit = maxCapacity
+	if maxCapacity == 0 {
+		maxCapacity = minCapacity + extentSize - 1
+	} else if maxCapacity < minCapacity {
+		return -1, -1, status.Error(codes.InvalidArgument, "minimum capacity must not exceed maximum capacity")
+	}
+
+	if minCapacity+extentSize-1 < 0 {
+		return -1, -1, status.Error(codes.OutOfRange, "integer overflow when rounding capacity")
+	}
+
+	// Round capacities towards extent boundaries.
+	minCapacity = (minCapacity + extentSize - 1) / extentSize * extentSize
+	maxCapacity = maxCapacity / extentSize * extentSize
+
 	if minCapacity == 0 {
-		return -1, -1, -1, status.Error(codes.InvalidArgument, "must specify minimum capacity")
+		return maxCapacity, limit, nil
+	} else if maxCapacity < minCapacity {
+		return -1, -1, status.Errorf(codes.OutOfRange, "capacity must allow for a multiple of the extent size %d", extentSize)
+	} else {
+		return minCapacity, limit, nil
 	}
-	if maxCapacity != 0 && maxCapacity < minCapacity {
-		return -1, -1, -1, status.Error(codes.InvalidArgument, "minimum capacity must not exceed maximum capacity")
-	}
-
-	// TODO: Check for overflow.
-	capacity = (minCapacity + 511) / 512 * 512
-
-	if maxCapacity != 0 && maxCapacity < capacity {
-		return -1, -1, -1, status.Error(codes.InvalidArgument, "actual capacity must be a multiple of 512 bytes")
-	}
-
-	return
 }
 
 func (s *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
