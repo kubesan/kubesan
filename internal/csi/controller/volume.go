@@ -175,7 +175,7 @@ func getVolumeContents(req *csi.CreateVolumeRequest) (*v1alpha1.VolumeContents, 
 			SourceSnapshot: source.SnapshotId,
 		}
 	} else {
-		return nil, status.Errorf(codes.InvalidArgument, "unsupported volume content source")
+		return nil, status.Error(codes.InvalidArgument, "unsupported volume content source")
 	}
 
 	return volumeContents, nil
@@ -234,17 +234,17 @@ func validateCapacity(capacityRange *csi.CapacityRange) (capacity int64, minCapa
 	}
 
 	if minCapacity == 0 {
-		return -1, -1, -1, status.Errorf(codes.InvalidArgument, "must specify minimum capacity")
+		return -1, -1, -1, status.Error(codes.InvalidArgument, "must specify minimum capacity")
 	}
 	if maxCapacity != 0 && maxCapacity < minCapacity {
-		return -1, -1, -1, status.Errorf(codes.InvalidArgument, "minimum capacity must not exceed maximum capacity")
+		return -1, -1, -1, status.Error(codes.InvalidArgument, "minimum capacity must not exceed maximum capacity")
 	}
 
 	// TODO: Check for overflow.
 	capacity = (minCapacity + 511) / 512 * 512
 
 	if maxCapacity != 0 && maxCapacity < capacity {
-		return -1, -1, -1, status.Errorf(codes.InvalidArgument, "actual capacity must be a multiple of 512 bytes")
+		return -1, -1, -1, status.Error(codes.InvalidArgument, "actual capacity must be a multiple of 512 bytes")
 	}
 
 	return
@@ -254,7 +254,7 @@ func (s *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolu
 	// validate request
 
 	if req.VolumeId == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "must specify volume id")
+		return nil, status.Error(codes.InvalidArgument, "must specify volume id")
 	}
 
 	// delete volume

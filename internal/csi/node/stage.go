@@ -24,11 +24,11 @@ func (s *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolu
 	// validate request
 
 	if req.VolumeId == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "must specify volume id")
+		return nil, status.Error(codes.InvalidArgument, "must specify volume id")
 	}
 
 	if req.StagingTargetPath == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "must specify staging target path")
+		return nil, status.Error(codes.InvalidArgument, "must specify staging target path")
 	}
 
 	if err := validate.ValidateVolumeCapability(req.VolumeCapability); err != nil {
@@ -97,11 +97,11 @@ func (s *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstage
 	// validate request
 
 	if req.VolumeId == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "must specify volume id")
+		return nil, status.Error(codes.InvalidArgument, "must specify volume id")
 	}
 
 	if req.StagingTargetPath == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "must specify staging target path")
+		return nil, status.Error(codes.InvalidArgument, "must specify staging target path")
 	}
 
 	// unmount file system, if necessary

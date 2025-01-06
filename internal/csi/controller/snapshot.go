@@ -22,11 +22,11 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 	// validate request
 
 	if req.SourceVolumeId == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "must specify source volume id")
+		return nil, status.Error(codes.InvalidArgument, "must specify source volume id")
 	}
 
 	if req.Name == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "must specify snapshot name")
+		return nil, status.Error(codes.InvalidArgument, "must specify snapshot name")
 	}
 
 	// create snapshot
@@ -71,7 +71,7 @@ func (s *ControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSn
 	// validate request
 
 	if req.SnapshotId == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "must specify snapshot id")
+		return nil, status.Error(codes.InvalidArgument, "must specify snapshot id")
 	}
 
 	// delete snapshot

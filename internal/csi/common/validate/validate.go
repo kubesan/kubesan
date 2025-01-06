@@ -13,7 +13,7 @@ func ValidateVolumeCapability(capability *csi.VolumeCapability) error {
 	if mount := capability.GetMount(); mount != nil {
 		return validateVolumeCapabilityMount(capability)
 	} else if capability.GetBlock() == nil {
-		return status.Errorf(codes.InvalidArgument, "expected a block or mount volume")
+		return status.Error(codes.InvalidArgument, "expected a block or mount volume")
 	}
 	return nil
 }
