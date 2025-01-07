@@ -10,7 +10,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/mount-utils"
 
@@ -23,12 +23,17 @@ import (
 func (s *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
 	// validate request
 
-	if req.VolumeId == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "must specify volume id")
+	namespacedName, err := validate.ValidateVolumeID(req.VolumeId)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validate.ValidateVolumeContext(req.PublishContext); err != nil {
+		return nil, err
 	}
 
 	if req.StagingTargetPath == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "must specify staging target path")
+		return nil, status.Error(codes.InvalidArgument, "must specify staging target path")
 	}
 
 	if err := validate.ValidateVolumeCapability(req.VolumeCapability); err != nil {
@@ -38,8 +43,11 @@ func (s *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolu
 	// attach volume to local node
 
 	volume := &v1alpha1.Volume{}
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		if err := s.client.Get(ctx, types.NamespacedName{Name: req.VolumeId, Namespace: config.Namespace}, volume); err != nil {
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := s.client.Get(ctx, namespacedName, volume); err != nil {
+			if errors.IsNotFound(err) {
+				return status.Error(codes.NotFound, "volume does not exist")
+			}
 			return err
 		}
 
@@ -96,12 +104,13 @@ func (s *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolu
 func (s *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
 	// validate request
 
-	if req.VolumeId == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "must specify volume id")
+	namespacedName, err := validate.ValidateVolumeID(req.VolumeId)
+	if err != nil {
+		return nil, err
 	}
 
 	if req.StagingTargetPath == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "must specify staging target path")
+		return nil, status.Error(codes.InvalidArgument, "must specify staging target path")
 	}
 
 	// unmount file system, if necessary
@@ -135,7 +144,10 @@ func (s *NodeServer) NodeUnstageVolume(ctx context.Context, req *csi.NodeUnstage
 
 	volume := &v1alpha1.Volume{}
 	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		if err := s.client.Get(ctx, types.NamespacedName{Name: req.VolumeId, Namespace: config.Namespace}, volume); err != nil {
+		if err := s.client.Get(ctx, namespacedName, volume); err != nil {
+			if errors.IsNotFound(err) {
+				return status.Error(codes.NotFound, "volume does not exist")
+			}
 			return err
 		}
 

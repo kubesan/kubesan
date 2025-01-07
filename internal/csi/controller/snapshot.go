@@ -16,17 +16,18 @@ import (
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
+	"gitlab.com/kubesan/kubesan/internal/csi/common/validate"
 )
 
 func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
 	// validate request
 
-	if req.SourceVolumeId == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "must specify source volume id")
+	if _, err := validate.ValidateVolumeID(req.SourceVolumeId); err != nil {
+		return nil, err
 	}
 
 	if req.Name == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "must specify snapshot name")
+		return nil, status.Error(codes.InvalidArgument, "must specify snapshot name")
 	}
 
 	// create snapshot
@@ -70,8 +71,8 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 func (s *ControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSnapshotRequest) (*csi.DeleteSnapshotResponse, error) {
 	// validate request
 
-	if req.SnapshotId == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "must specify snapshot id")
+	if _, err := validate.ValidateSnapshotID(req.SnapshotId); err != nil {
+		return nil, err
 	}
 
 	// delete snapshot
