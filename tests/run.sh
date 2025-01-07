@@ -141,9 +141,10 @@ install_kubesan=0
 uninstall_kubesan=0
 
 if (( "${#tests_arg[@]}" == 1 )) && [[ "${tests_arg[0]}" = create-cache ]]; then
+    use_cache=1
     create_cache=1
 elif (( "${#tests_arg[@]}" == 1 )) && [[ "${tests_arg[0]}" = delete-cache ]]; then
-    create_cache=1
+    use_cache=1
     delete_cache=1
 elif (( "${#tests_arg[@]}" == 1 )) && [[ "${tests_arg[0]}" = sandbox ]]; then
     sandbox=1
@@ -175,6 +176,12 @@ if (( sandbox )) && ! (( support_sandbox )); then
     exit 1
 fi
 
+# cache support might not be available for all providers
+if (( use_cache )) && ! (( requires_local_deploy && support_snapshots )); then
+    >&2 echo "${deploy_tool} does not support cache mode!"
+    exit 1
+fi
+
 tests=()
 for test in "${tests_arg[@]}"; do
     for (( i = 0; i < repeat; ++i )); do
@@ -200,7 +207,7 @@ __build_images
 # multiple clusters yet and pretty much works only
 # with kcli
 
-if (( requires_local_deploy )) && (( support_snapshots )); then
+if (( use_cache )); then
     if (( create_cache )) || (( delete_cache )) || (( refresh_cache )); then
         __log_cyan "Deleting ${deploy_tool} cluster '%s'..." "${cluster_base_name}"
         __delete_${deploy_tool}_cluster "${cluster_base_name}"
