@@ -207,6 +207,7 @@ func LvmLvExtendIdempotent(args ...string) (Output, error) {
 	return output, err
 }
 
+// Low-level check for an exact tag match.
 func LvmLvHasTag(vgName string, lvName string, tag string) (bool, error) {
 	output, err := Lvm(
 		"lvs",
@@ -222,6 +223,7 @@ func LvmLvHasTag(vgName string, lvName string, tag string) (bool, error) {
 	return string(output.Combined) != "", nil
 }
 
+// Low-level creation of a complete tag.
 func LvmLvAddTag(vgName string, lvName string, tag string) error {
 	// lvchange succeeds if the tag is already present
 	_, err := Lvm(
@@ -231,6 +233,93 @@ func LvmLvAddTag(vgName string, lvName string, tag string) error {
 		fmt.Sprintf("%s/%s", vgName, lvName),
 	)
 	return err
+}
+
+// Low-level removal of a complete tag.
+func LvmLvDelTag(vgName string, lvName string, tag string) error {
+	// lvchange succeeds if the tag is already removed
+	_, err := Lvm(
+		"lvchange",
+		"--devicesfile", vgName,
+		"--deltag", tag,
+		fmt.Sprintf("%s/%s", vgName, lvName),
+	)
+	return err
+}
+
+// Low-level grab of all tags on an lv.
+func LvmLvGetTags(vgName string, lvName string) ([]string, error) {
+	output, err := Lvm(
+		"lvs",
+		"--devicesfile", vgName,
+		"--options", "lv_tags",
+		"--noheadings",
+		fmt.Sprintf("%s/%s", vgName, lvName),
+	)
+	if err != nil {
+		return nil, err
+	}
+	return strings.Split(strings.TrimSpace(string(output.Combined)), ","), nil
+}
+
+// We are going to emulate a key=counter store on top of lvm tags,
+// where counter is a monotonically-increasing integer.  To do this,
+// we read all tags, select only the tags with matching key, and
+// ignore any tags with value smaller than the maximum.  If no tag
+// matches, assume value is 0.
+
+// Return the current value of the counter.  Does not modify the lv.
+func LvmLvGetCounter(vgName string, lvName string, key string) (int64, error) {
+	tags, err := LvmLvGetTags(vgName, lvName)
+	if err != nil {
+		return 0, err
+	}
+	value := int64(0)
+	for _, tag := range tags {
+		suffix, ok := strings.CutPrefix(tag, key+"=")
+		if !ok {
+			continue
+		}
+		candidate, err := strconv.ParseInt(suffix, 10, 64)
+		if err == nil && candidate > value {
+			value = candidate
+		}
+	}
+	return value, nil
+}
+
+// Idempotently update the value of a counter.  Attempts to remove
+// any lower values, but succeeds even if that cleanup fails.  Returns
+// the latest value, which may be larger than the input.
+func LvmLvUpdateCounterIfLower(vgName string, lvName string, key string, value int64) (int64, error) {
+	// First, stick in the requested value.
+	if err := LvmLvAddTag(vgName, lvName, fmt.Sprintf("%s=%d", key, value)); err != nil {
+		return 0, err
+	}
+
+	// Then walk the keys, pruning as we go.
+	tags, err := LvmLvGetTags(vgName, lvName)
+	if err != nil {
+		return 0, err
+	}
+	value = 0
+	for _, tag := range tags {
+		suffix, ok := strings.CutPrefix(tag, key+"=")
+		if !ok {
+			continue
+		}
+		candidate, err := strconv.ParseInt(suffix, 10, 64)
+		switch {
+		case err != nil:
+			_ = LvmLvDelTag(vgName, lvName, tag)
+		case candidate > value:
+			_ = LvmLvDelTag(vgName, lvName, fmt.Sprintf("%s=%d", key, value))
+			value = candidate
+		case candidate < value:
+			_ = LvmLvDelTag(vgName, lvName, tag)
+		}
+	}
+	return value, nil
 }
 
 // Return the current size of the LV.
