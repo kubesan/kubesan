@@ -5,6 +5,8 @@ package dm
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -32,6 +34,11 @@ import (
 // from the upper layer before it closed.  Then on a resume request,
 // the lower layer does another suspend and resume into the correct
 // device, all before the upper layer finally resumes.
+//
+// It is also worth noting that "dmsetup resume" (without a suspend)
+// of a new table is the only way to get an existing device-mapper to
+// see a larger size when an underlying device resizes.  The Resume()
+// function works for both hot-swap and size expansion.
 
 // Create the wrappers in the filesystem so that the device can be opened;
 // however, I/O to the device is not possible until Resume() is used.
@@ -110,14 +117,7 @@ func Suspend(ctx context.Context, name string, skipSync bool) error {
 		// Resume the lower layer on a new table, so that the
 		// old device is released.  The smaller size doesn't
 		// matter, since there will be no I/O anyways.
-		_, err = commands.Dmsetup("load", lowerName(name), "--table", zeroTable(512))
-		if err != nil {
-			log.Error(err, "dm lower load failed")
-			return err
-		}
-
-		// We already flushed, so another flush is pointless.
-		_, err = commands.Dmsetup("resume", "--noflush", "--nolockfs", lowerName(name))
+		err = loadTable(lowerName(name), zeroTable(512))
 		if err != nil {
 			log.Error(err, "dm lower resume failed")
 			return err
@@ -127,31 +127,36 @@ func Suspend(ctx context.Context, name string, skipSync bool) error {
 	return nil
 }
 
-// Resume I/O on the volume, as routed through devPath.
+// Perform a load/resume pair of the given table into a given device.
+func loadTable(device string, table string) error {
+	_, err := commands.Dmsetup("load", device, "--table", table)
+	if err != nil {
+		return err
+	}
+
+	// Either the device was previously suspended (we flushed at
+	// the time of suspend, and there has been no I/O since) or we
+	// are extending the storage (and therefore keeping the same
+	// backing device); either way, we do not need to wait for a
+	// flush or filesystem lock on load.
+	_, err = commands.Dmsetup("resume", "--noflush", "--nolockfs", device)
+	return err
+}
+
+// Resume I/O on the volume, as routed through devPath, possibly with a
+// larger size.
 func Resume(ctx context.Context, name string, sizeBytes int64, devPath string) error {
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
-	// No need to flush - the old table should have had no I/O
-	// because the upper layer is still suspended.
-	_, err := commands.Dmsetup("load", lowerName(name), "--table", lowerTable(sizeBytes, devPath))
-	if err != nil {
+	if err := loadTable(lowerName(name), lowerTable(sizeBytes, devPath)); err != nil {
 		log.Error(err, "dm lower load failed")
 		return err
 	}
 
-	_, err = commands.Dmsetup("resume", "--noflush", "--nolockfs", lowerName(name))
-	if err != nil {
-		log.Error(err, "dm lower resume failed")
+	if err := loadTable(upperName(name), upperTable(sizeBytes, name)); err != nil {
+		log.Error(err, "dm upper load failed")
 		return err
 	}
-
-	// No need to flush - the upper layer is not getting a new table.
-	_, err = commands.Dmsetup("resume", "--noflush", "--nolockfs", upperName(name))
-	if err != nil {
-		log.Error(err, "dm upper resume failed")
-		return err
-	}
-
 	return nil
 }
 
@@ -197,4 +202,26 @@ func lowerTable(sizeBytes int64, device string) string {
 
 func upperTable(sizeBytes int64, name string) string {
 	return fmt.Sprintf("0 %d linear /dev/mapper/%s 0", sizeBytes/512, lowerName(name))
+}
+
+// Return the size of the device mapper.
+func GetSize(ctx context.Context, name string) (int64, error) {
+	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
+
+	output, err := commands.Dmsetup("table", upperName(name))
+	if err != nil {
+		log.Error(err, "dm upper table failed")
+		return 0, err
+	}
+	words := strings.Split(string(output.Combined), " ")
+	if len(words) < 2 {
+		log.Error(err, "dm upper table failed")
+		return 0, errors.NewBadRequest("dm table parse failed")
+	}
+	sectors, err := strconv.ParseInt(words[1], 10, 64)
+	if err != nil {
+		log.Error(err, "dm upper table failed")
+		return 0, err
+	}
+	return 512 * sectors, nil
 }
