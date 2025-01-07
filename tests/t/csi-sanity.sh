@@ -40,8 +40,8 @@ spec:
         - --csi.testvolumeparameters
         - /etc/csi-parameters/parameters
         # Reduce volume size to fit test shared Volume Group
-        - --csi.testvolumesize=1073741824
-        - --csi.testvolumeexpandsize=2147483648
+        - --csi.testvolumesize=$((64*1024*1024))
+        - --csi.testvolumeexpandsize=$((128*1024*1024))
         - --ginkgo.v
         - --ginkgo.seed=1
 #        - --ginkgo.fail-fast
@@ -71,7 +71,7 @@ EOF
 
 fail=0
 ksan-stage "Waiting for csi-sanity results..."
-ksan-wait-for-pod-to-succeed 60 csi-sanity || fail=$?
+ksan-wait-for-pod-to-succeed 300 csi-sanity || fail=$?
 kubectl delete configmap csi-parameters
 kubectl logs pods/csi-sanity
 

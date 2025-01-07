@@ -4,10 +4,13 @@ package controller
 
 import (
 	"context"
+	"encoding/hex"
+	"hash/fnv"
 	"log"
 	"math"
+	"regexp"
+	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -23,7 +26,31 @@ import (
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
 	kubesanslices "gitlab.com/kubesan/kubesan/internal/common/slices"
+	"gitlab.com/kubesan/kubesan/internal/csi/common/validate"
 )
+
+const (
+	// TODO: It would be nice to use:
+	// vgs --devicesfile=$VG --options=vg_extent_size --no-heading --no-suffix --units=b $VG
+	// to determine the PE size at runtime, as well as validate that
+	// the VG has properly been locked.  But doing that from the CSI
+	// process requires privileges that for now we have left to only
+	// the managers.  So we hard-code the default 4MiB extent size.
+	defaultExtentSize = 4 * 1024 * 1024
+)
+
+var (
+	pvcNamePattern = regexp.MustCompile(`^pvc-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
+)
+
+func safeName(name string) string {
+	if matches := pvcNamePattern.FindStringSubmatch(name); matches != nil {
+		return name
+	}
+	hash := fnv.New128a()
+	hash.Write([]byte(name))
+	return "kubesan-" + hex.EncodeToString(hash.Sum(nil))
+}
 
 func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	// pvName, err := getParameter("csi.storage.k8s.io/pv/name")
@@ -36,12 +63,12 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 		return nil, status.Error(codes.InvalidArgument, "missing/empty parameter \"lvmVolumeGroup\"")
 	}
 
-	volumeMode, err := getVolumeMode(req)
+	volumeMode, err := getVolumeMode(req.Parameters)
 	if err != nil {
 		return nil, err
 	}
 
-	volumeType, err := getVolumeType(req)
+	volumeType, err := getVolumeType(req.VolumeCapabilities)
 	if err != nil {
 		return nil, err
 	}
@@ -51,26 +78,32 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 		return nil, err
 	}
 
-	accessModes, err := getVolumeAccessModes(req)
+	accessModes, err := getVolumeAccessModes(req.VolumeCapabilities)
 	if err != nil {
 		return nil, err
 	}
 
-	capacity, _, _, err := validateCapacity(req.CapacityRange)
+	capacity, limit, err := validateCapacity(req.CapacityRange, defaultExtentSize)
 	if err != nil {
 		return nil, err
+	}
+
+	// We don't advertise MODIFY_VOLUME, so mutable parameters are unexpected.
+	if len(req.MutableParameters) > 0 {
+		return nil, status.Error(codes.InvalidArgument, "no mutable parameters supported")
 	}
 
 	// Kubernetes object names are typically DNS Subdomain Names (RFC
-	// 1123). Only lowercase characters are allowed.
+	// 1123). Only lowercase characters are allowed.  When invoked by
+	// the kubernetes csi-sidecar, the names match pvc-uuid, which
+	// we prefer to use as-is since it is already a valid object name.
 	//
-	// Converting to lowercase does not uniquely represent all possible
-	// names, but it's enough to make the csi-sanity test suite work (it
-	// produces uppercase names). Kubernetes itself uses the lowercase PVC
-	// UUID as the name so there is no problem in practice.
+	// However, CSI permits a much larger range of Unicode names,
+	// other than a few control characters; since csi-sanity uses
+	// such names, we map those through a hash.
 	//
 	// See https://kubernetes.io/docs/concepts/overview/working-with-objects/names/
-	name := strings.ToLower(req.Name)
+	name := safeName(req.Name)
 
 	volume := &v1alpha1.Volume{
 		ObjectMeta: metav1.ObjectMeta{
@@ -87,7 +120,17 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 		},
 	}
 
-	if err := s.client.Create(ctx, volume); err != nil && !errors.IsAlreadyExists(err) {
+	err = s.client.Create(ctx, volume)
+	if errors.IsAlreadyExists(err) {
+		// Check that the new request is idempotent to the existing volume
+		err = s.client.Get(ctx, types.NamespacedName{Name: name, Namespace: config.Namespace}, volume)
+		if err == nil {
+			if msg := validateVolume(volume, capacity, limit, volumeContents, req.VolumeCapabilities, req.Parameters); msg != "" {
+				err = status.Error(codes.AlreadyExists, msg)
+			}
+		}
+	}
+	if err != nil {
 		return nil, err
 	}
 
@@ -109,8 +152,8 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 	return resp, nil
 }
 
-func getVolumeMode(req *csi.CreateVolumeRequest) (v1alpha1.VolumeMode, error) {
-	mode := req.Parameters["mode"]
+func getVolumeMode(parameters map[string]string) (v1alpha1.VolumeMode, error) {
+	mode := parameters["mode"]
 	if mode == "" {
 		return v1alpha1.VolumeModeThin, nil
 	}
@@ -122,12 +165,12 @@ func getVolumeMode(req *csi.CreateVolumeRequest) (v1alpha1.VolumeMode, error) {
 	return v1alpha1.VolumeMode(mode), nil
 }
 
-func getVolumeType(req *csi.CreateVolumeRequest) (*v1alpha1.VolumeType, error) {
+func getVolumeType(capabilities []*csi.VolumeCapability) (*v1alpha1.VolumeType, error) {
 	var volumeType *v1alpha1.VolumeType
 	var isTypeBlock bool
 	var isTypeMount bool
 
-	for _, cap := range req.VolumeCapabilities {
+	for _, cap := range capabilities {
 		var vt v1alpha1.VolumeType
 
 		if block := cap.GetBlock(); block != nil {
@@ -168,22 +211,28 @@ func getVolumeContents(req *csi.CreateVolumeRequest) (*v1alpha1.VolumeContents, 
 	if req.VolumeContentSource == nil {
 		volumeContents.Empty = &v1alpha1.VolumeContentsEmpty{}
 	} else if source := req.VolumeContentSource.GetVolume(); source != nil {
+		if _, err := validate.ValidateVolumeID(source.VolumeId); err != nil {
+			return nil, err
+		}
 		volumeContents.CloneVolume = &v1alpha1.VolumeContentsCloneVolume{
 			SourceVolume: source.VolumeId,
 		}
 	} else if source := req.VolumeContentSource.GetSnapshot(); source != nil {
+		if _, err := validate.ValidateSnapshotID(source.SnapshotId); err != nil {
+			return nil, err
+		}
 		volumeContents.CloneSnapshot = &v1alpha1.VolumeContentsCloneSnapshot{
 			SourceSnapshot: source.SnapshotId,
 		}
 	} else {
-		return nil, status.Errorf(codes.InvalidArgument, "unsupported volume content source")
+		return nil, status.Error(codes.InvalidArgument, "unsupported volume content source")
 	}
 
 	return volumeContents, nil
 }
 
-func getVolumeAccessModes(req *csi.CreateVolumeRequest) ([]v1alpha1.VolumeAccessMode, error) {
-	modes, err := kubesanslices.TryMap(req.VolumeCapabilities, getVolumeAccessMode)
+func getVolumeAccessModes(capabilities []*csi.VolumeCapability) ([]v1alpha1.VolumeAccessMode, error) {
+	modes, err := kubesanslices.TryMap(capabilities, getVolumeAccessMode)
 	if err != nil {
 		return nil, err
 	}
@@ -219,14 +268,15 @@ func getVolumeAccessMode(capability *csi.VolumeCapability) (v1alpha1.VolumeAcces
 	}
 }
 
-func validateCapacity(capacityRange *csi.CapacityRange) (capacity int64, minCapacity int64, maxCapacity int64, err error) {
+func validateCapacity(capacityRange *csi.CapacityRange, extentSize int64) (capacity, limit int64, err error) {
+	var minCapacity, maxCapacity int64
 	if capacityRange == nil {
 		// The capacity_range field is OPTIONAL in the CSI spec and the
 		// plugin MAY choose an implementation-defined capacity range.
 		// The csi-sanity test suite assumes the plugin chooses the
 		// capacity range, so we have to pick a number here instead of
 		// returning an error.
-		var gigabyte int64 = 1024 * 1024 * 1024
+		const gigabyte int64 = 1024 * 1024 * 1024
 		minCapacity = gigabyte
 		maxCapacity = gigabyte
 	} else {
@@ -234,28 +284,43 @@ func validateCapacity(capacityRange *csi.CapacityRange) (capacity int64, minCapa
 		maxCapacity = capacityRange.LimitBytes
 	}
 
+	// CSI says that if capacityRange was provided, at least one of the
+	// two parameters must be non-zero, and that negatives aren't allowed.
+	if minCapacity == 0 && maxCapacity == 0 {
+		return -1, -1, status.Error(codes.InvalidArgument, "at least one of minimum and maximum capacity must be given")
+	} else if minCapacity < 0 || maxCapacity < 0 {
+		return -1, -1, status.Error(codes.InvalidArgument, "capacity must be non-negative")
+	}
+
+	limit = maxCapacity
+	if maxCapacity == 0 {
+		maxCapacity = minCapacity + extentSize - 1
+	} else if maxCapacity < minCapacity {
+		return -1, -1, status.Error(codes.InvalidArgument, "minimum capacity must not exceed maximum capacity")
+	}
+
+	if minCapacity+extentSize-1 < 0 {
+		return -1, -1, status.Error(codes.OutOfRange, "integer overflow when rounding capacity")
+	}
+
+	// Round capacities towards extent boundaries.
+	minCapacity = (minCapacity + extentSize - 1) / extentSize * extentSize
+	maxCapacity = maxCapacity / extentSize * extentSize
+
 	if minCapacity == 0 {
-		return -1, -1, -1, status.Errorf(codes.InvalidArgument, "must specify minimum capacity")
+		return maxCapacity, limit, nil
+	} else if maxCapacity < minCapacity {
+		return -1, -1, status.Errorf(codes.OutOfRange, "capacity must allow for a multiple of the extent size %d", extentSize)
+	} else {
+		return minCapacity, limit, nil
 	}
-	if maxCapacity != 0 && maxCapacity < minCapacity {
-		return -1, -1, -1, status.Errorf(codes.InvalidArgument, "minimum capacity must not exceed maximum capacity")
-	}
-
-	// TODO: Check for overflow.
-	capacity = (minCapacity + 511) / 512 * 512
-
-	if maxCapacity != 0 && maxCapacity < capacity {
-		return -1, -1, -1, status.Errorf(codes.InvalidArgument, "actual capacity must be a multiple of 512 bytes")
-	}
-
-	return
 }
 
 func (s *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	// validate request
 
 	if req.VolumeId == "" {
-		return nil, status.Errorf(codes.InvalidArgument, "must specify volume id")
+		return nil, status.Error(codes.InvalidArgument, "must specify volume id")
 	}
 
 	// delete volume
@@ -303,6 +368,116 @@ func (s *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolu
 	resp := &csi.DeleteVolumeResponse{}
 
 	return resp, nil
+}
+
+// Checks whether the existing volume is compatible with a capabilities array.
+// Returns "" if compatible, or a string describing an inconsistency.
+func validateCapabilities(volume *v1alpha1.Volume, capabilities []*csi.VolumeCapability) string {
+	if volumeType, err := getVolumeType(capabilities); err != nil || *volumeType != volume.Spec.Type {
+		return "incompatible volume type"
+	}
+
+	// A subset of access modes is still okay
+	accessModes, err := getVolumeAccessModes(capabilities)
+	if err != nil {
+		return "incomptible access modes"
+	}
+	for _, mode := range accessModes {
+		if !slices.Contains(volume.Spec.AccessModes, mode) {
+			return "incompatible access modes"
+		}
+	}
+
+	return ""
+}
+
+// Checks whether the existing volume is compatible with another creation
+// or validation request. Returns "" if compatible, or a string describing
+// an inconsistency if incompatible.
+func validateVolume(volume *v1alpha1.Volume, size int64, limit int64, source *v1alpha1.VolumeContents, capabilities []*csi.VolumeCapability, parameters map[string]string) string {
+	if size > volume.Spec.SizeBytes || (limit > 0 && limit < volume.Spec.SizeBytes) {
+		return "incompatible sizes"
+	}
+	switch {
+	case source == &volume.Spec.Contents: // same pointer
+	case source.Empty != nil && volume.Spec.Contents.Empty != nil: // match
+	case source.CloneVolume != nil && volume.Spec.Contents.CloneVolume != nil && *source.CloneVolume == *volume.Spec.Contents.CloneVolume: // match
+	case source.CloneSnapshot != nil && volume.Spec.Contents.CloneSnapshot != nil && *source.CloneSnapshot == *volume.Spec.Contents.CloneSnapshot: // match
+	default:
+		return "incompatible source contents"
+	}
+
+	lvmVolumeGroup := parameters["lvmVolumeGroup"]
+	if lvmVolumeGroup != volume.Spec.VgName {
+		return "incompatible parameter \"lvmVolumeGroup\""
+	}
+
+	if volumeMode, err := getVolumeMode(parameters); err != nil || volumeMode != volume.Spec.Mode {
+		return "incompatible parameter \"mode\""
+	}
+
+	return validateCapabilities(volume, capabilities)
+}
+
+func (s *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *csi.ValidateVolumeCapabilitiesRequest) (*csi.ValidateVolumeCapabilitiesResponse, error) {
+	// validate request
+	namespacedName, err := validate.ValidateVolumeID(req.VolumeId)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := validate.ValidateVolumeContext(req.VolumeContext); err != nil {
+		return nil, err
+	}
+
+	if len(req.VolumeCapabilities) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "missing capability to verify")
+	}
+
+	// At present, we don't use secrets, so this should be empty.
+	if len(req.Secrets) > 0 {
+		return nil, status.Error(codes.InvalidArgument, "unexpected secrets")
+	}
+
+	// We don't advertise MODIFY_VOLUME, so mutable parameters are unexpected.
+	if len(req.MutableParameters) > 0 {
+		return nil, status.Error(codes.InvalidArgument, "no mutable parameters supported")
+	}
+
+	// lookup volume
+	volume := &v1alpha1.Volume{}
+	err = s.client.Get(ctx, namespacedName, volume)
+	if errors.IsNotFound(err) {
+		return nil, status.Error(codes.NotFound, "volume not found")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Check input compatibility with volume.
+	if msg := validateVolume(volume, volume.Spec.SizeBytes, 0, &volume.Spec.Contents, req.VolumeCapabilities, req.Parameters); msg != "" {
+		return &csi.ValidateVolumeCapabilitiesResponse{
+			Message: msg,
+		}, nil
+	}
+
+	// Copy out only the capabilities and parameters we actually checked.
+	return &csi.ValidateVolumeCapabilitiesResponse{
+		Confirmed: &csi.ValidateVolumeCapabilitiesResponse_Confirmed{
+			VolumeCapabilities: req.VolumeCapabilities,
+			Parameters:         copyKnownParameters(req.Parameters),
+		},
+	}, nil
+}
+
+func copyKnownParameters(parameters map[string]string) map[string]string {
+	result := make(map[string]string, len(parameters))
+	for key, value := range parameters {
+		if key == "lvmVolumeGroup" || key == "mode" {
+			result[key] = value
+		}
+	}
+	return result
 }
 
 func (s *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {

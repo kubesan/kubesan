@@ -25,8 +25,9 @@ func NewControllerServer(client *csiclient.CsiK8sClient) *ControllerServer {
 func (s *ControllerServer) ControllerGetCapabilities(ctx context.Context, req *csi.ControllerGetCapabilitiesRequest) (*csi.ControllerGetCapabilitiesResponse, error) {
 	caps := []csi.ControllerServiceCapability_RPC_Type{
 		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
-		csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
-		csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
+		// TODO Enable these once snapshot and clone are implemented
+		//		csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
+		//		csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
 		csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 		csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 	}
