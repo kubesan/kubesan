@@ -165,6 +165,7 @@ func LvmCreateProfile(name string, contents string) error {
 	return nil
 }
 
+// Call an lvm command.
 func Lvm(args ...string) (Output, error) {
 	log := log.FromContext(context.Background())
 	log.Info("LVM command", "args", args)
@@ -172,6 +173,7 @@ func Lvm(args ...string) (Output, error) {
 	return RunOnHost(append([]string{"lvm"}, args...)...)
 }
 
+// Call lvcreate, and filter out errors if device already exists.
 func LvmLvCreateIdempotent(args ...string) (Output, error) {
 	output, err := Lvm(append([]string{"lvcreate"}, args...)...)
 
@@ -182,11 +184,23 @@ func LvmLvCreateIdempotent(args ...string) (Output, error) {
 	return output, err
 }
 
+// Call lvcreate, and filter out errors if device is already removed.
 func LvmLvRemoveIdempotent(args ...string) (Output, error) {
 	output, err := Lvm(append([]string{"lvremove"}, args...)...)
 
 	// ignore both "failed to find" and "Failed to find"
 	if err != nil && strings.Contains(string(output.Combined), "ailed to find") {
+		err = nil // suppress error for idempotency
+	}
+
+	return output, err
+}
+
+// Call lvextend, and filter out errors if device is already sized large enough.
+func LvmLvExtendIdempotent(args ...string) (Output, error) {
+	output, err := Lvm(append([]string{"lvextend"}, args...)...)
+
+	if err != nil && (strings.Contains(string(output.Combined), "matches existing size") || strings.Contains(string(output.Combined), "not larger than existing size")) {
 		err = nil // suppress error for idempotency
 	}
 
