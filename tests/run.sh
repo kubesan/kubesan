@@ -363,6 +363,30 @@ EOF
     elif (( exit_code == 0 )); then
 
         if (( uninstall_kubesan )); then
+            __log_cyan "Waiting for KubeSAN to quiesce..."
+            if [[ -n "$(kubectl get --namespace kubesan-system volume --ignore-not-found)" ]]; then
+                __log_red 'Volumes leaked after test:'
+                kubectl describe --namespace kubesan-system volume
+		exit 1
+            fi
+            if [[ -n "$(kubectl get --namespace kubesan-system snapshot --ignore-not-found)" ]]; then
+                __log_red 'Snapshots leaked after test:'
+                kubectl describe --namespace kubesan-system snapshot
+		exit 1
+            fi
+            if [[ -n "$(kubectl get --namespace kubesan-system nbdexport --ignore-not-found)" ]]; then
+                __log_red 'NbdExports leaked after test:'
+                kubectl describe --namespace kubesan-system nbdexport
+		exit 1
+            fi
+            if ksan-poll 1 30 '[[ -z "$(kubectl get --namespace kubesan-system thinpoollv --ignore-not-found)" ]]'; then
+                :
+            else
+                __log_red "ThinPoolLv leaked after Volume and Snapshot deletion"
+                kubectl describe --namespace kubesan-system thinpoollv
+                exit 1
+            fi
+
             # __clean_cluster after test TBD for all deployers
             __log_cyan "Uninstalling KubeSAN..."
             kubectl delete --ignore-not-found --timeout=120s \
