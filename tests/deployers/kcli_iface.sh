@@ -97,7 +97,7 @@ __wait_kcli_cluster() {
                 __log_cyan "Still waiting for cluster to be fully operational..."
             fi
             timeout=$(( timeout - 1))
-	    sleep 1
+            sleep 1
         else
             __log_green "Cluster is fully operartional..."
             return 0
@@ -118,15 +118,15 @@ __start_kcli_cluster() {
     if ! __kcli_cluster_exists "$1"; then
         if ! __kcli list images -o name |grep -q "/fedora40$"; then
             __kcli download image fedora40
-	fi
+        fi
 
-	if [[ "${num_nodes}" -ge "5" ]]; then
+        if [[ "${num_nodes}" -ge "5" ]]; then
             controllers=3
-	fi
-	workers=$(( num_nodes - controllers ))
-	__log_cyan "kcli will deploy $controllers control-plane node(s) and $workers worker(s)"
+        fi
+        workers=$(( num_nodes - controllers ))
+        __log_cyan "kcli will deploy $controllers control-plane node(s) and $workers worker(s)"
 
-	__kcli create cluster generic \
+        __kcli create cluster generic \
                 --threaded \
                 --param image=fedora40 \
                 --param ctlplanes=$controllers \
@@ -234,7 +234,7 @@ ksan-kcli-ssh-into-node() {
         # shellcheck disable=SC2154
         __kcli \
             ssh \
-	    -t \
+            -t \
             "$( __ksan-get-node-name "$1" )" \
             -- \
             bash -i
@@ -242,7 +242,7 @@ ksan-kcli-ssh-into-node() {
         local __args="${*:2}"
         __kcli \
             ssh \
-	    -t \
+            -t \
             "$( __ksan-get-node-name "$1" )" \
             -- \
             bash -ic "${__args@Q}" bash

@@ -57,7 +57,7 @@ while (( $# > 0 )); do
             # shellcheck disable=SC2034
             pause_on_stage=1
             ;;
-	--use)
+        --use)
             shift
             deploy_tool=$1
             ;;
@@ -250,7 +250,7 @@ __run() {
     if (( requires_local_deploy )); then
         __get_a_current_cluster
     else
-	__get_${deploy_tool}_current_cluster
+        __get_${deploy_tool}_current_cluster
     fi
 
     # minikube specifically is able to update and manage kubeconfig

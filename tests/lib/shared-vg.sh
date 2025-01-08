@@ -8,7 +8,7 @@ __create_ksan_shared_vg() {
 
     for node in "${NODES[@]}"; do
         __${deploy_tool}_ssh "${node}" "
-	sudo lvmdevices --devicesfile "$1" --adddev "$2"
+        sudo lvmdevices --devicesfile "$1" --adddev "$2"
         sudo vgchange --lockstart "$1"
         sudo vgimportdevices "$1" --devicesfile "$1"
         "
