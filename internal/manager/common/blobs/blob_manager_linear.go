@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -99,7 +100,7 @@ func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeByt
 	return nil
 }
 
-func (m *LinearBlobManager) RemoveBlob(ctx context.Context, name string, owner client.Object) error {
+func (m *LinearBlobManager) RemoveBlob(ctx context.Context, name string) error {
 	// stop blkdiscard in case it's running
 	if err := m.workers.Cancel(m.blkdiscardWorkName(name)); err != nil {
 		return err
@@ -110,6 +111,21 @@ func (m *LinearBlobManager) RemoveBlob(ctx context.Context, name string, owner c
 		fmt.Sprintf("%s/%s", m.vgName, name),
 	)
 	return err
+}
+
+func (m *LinearBlobManager) SnapshotBlob(ctx context.Context, name string, sourceName string, owner client.Object) error {
+	// Linear volumes do not support snapshots
+	return errors.NewBadRequest("linear volumes do not support snapshots")
+}
+
+func (m *LinearBlobManager) RemoveSnapshot(ctx context.Context, name string, sourceName string) error {
+	// Linear volumes do not support snapshots
+	return errors.NewBadRequest("linear volumes do not support snapshots")
+}
+
+func (m *LinearBlobManager) GetSnapshotSize(ctx context.Context, name string, sourceName string) (int64, error) {
+	// Linear volumes do not support snapshots
+	return 0, errors.NewBadRequest("linear volumes do not support snapshots")
 }
 
 func (m *LinearBlobManager) GetPath(name string) string {

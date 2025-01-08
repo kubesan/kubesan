@@ -25,10 +25,6 @@ spec:
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
-    - description: '''VG owning the snapshot'''
-      jsonPath: .spec.vgName
-      name: VG
-      type: string
     - description: '''Volume that this snapshot was created on'''
       jsonPath: .spec.sourceVolume
       name: Source
@@ -69,14 +65,8 @@ spec:
                 type: string
                 x-kubernetes-validations:
                 - rule: oldSelf==self
-              vgName:
-                description: Should be set from creation and never updated.
-                type: string
-                x-kubernetes-validations:
-                - rule: oldSelf==self
             required:
             - sourceVolume
-            - vgName
             type: object
           status:
             properties:

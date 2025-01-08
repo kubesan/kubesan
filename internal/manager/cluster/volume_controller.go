@@ -66,7 +66,7 @@ func (r *VolumeReconciler) reconcileDeleting(ctx context.Context, blobMgr blobs.
 		return nil // wait until no longer attached
 	}
 
-	if err := blobMgr.RemoveBlob(ctx, volume.Name, volume); err != nil {
+	if err := blobMgr.RemoveBlob(ctx, volume.Name); err != nil {
 		if _, ok := err.(*util.WatchPending); ok {
 			log.Info("RemoveBlob waiting for Watch")
 			return nil // wait until Watch triggers

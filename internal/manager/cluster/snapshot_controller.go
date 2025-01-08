@@ -6,11 +6,17 @@ import (
 	"context"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	"gitlab.com/kubesan/kubesan/internal/common/config"
+	"gitlab.com/kubesan/kubesan/internal/manager/common/blobs"
+	"gitlab.com/kubesan/kubesan/internal/manager/common/util"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type SnapshotReconciler struct {
@@ -34,6 +40,103 @@ func SetUpSnapshotReconciler(mgr ctrl.Manager) error {
 // +kubebuilder:rbac:groups=kubesan.gitlab.io,resources=snapshots/status,verbs=get;update;patch,namespace=kubesan-system
 // +kubebuilder:rbac:groups=kubesan.gitlab.io,resources=snapshots/finalizers,verbs=update,namespace=kubesan-system
 
+func (r *SnapshotReconciler) reconcileDeleting(ctx context.Context, blobMgr blobs.BlobManager, snapshot *v1alpha1.Snapshot) error {
+	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
+
+	if err := blobMgr.RemoveSnapshot(ctx, snapshot.Name, snapshot.Spec.SourceVolume); err != nil {
+		return err
+	}
+
+	log.Info("RemoveSnapshot succeeded")
+
+	if controllerutil.RemoveFinalizer(snapshot, config.Finalizer) {
+		if err := r.Update(ctx, snapshot); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *SnapshotReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blobs.BlobManager, snapshot *v1alpha1.Snapshot) error {
+	// add finalizer
+
+	if controllerutil.AddFinalizer(snapshot, config.Finalizer) {
+		if err := r.Update(ctx, snapshot); err != nil {
+			return err
+		}
+	}
+
+	// create LVM LV if necessary
+
+	if !meta.IsStatusConditionTrue(snapshot.Status.Conditions, v1alpha1.SnapshotConditionAvailable) {
+		log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
+
+		err := blobMgr.SnapshotBlob(ctx, snapshot.Name, snapshot.Spec.SourceVolume, snapshot)
+		if err != nil {
+			return err
+		}
+
+		log.Info("SnapshotBlob succeeded")
+
+		condition := metav1.Condition{
+			Type:    v1alpha1.SnapshotConditionAvailable,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Created",
+			Message: "lvm logical snapshot created",
+		}
+		meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
+
+		sizeBytes, err := blobMgr.GetSnapshotSize(ctx, snapshot.Name, snapshot.Spec.SourceVolume)
+		if err != nil {
+			return err
+		}
+		snapshot.Status.SizeBytes = sizeBytes
+
+		if err := r.statusUpdate(ctx, snapshot); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (r *SnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	return ctrl.Result{}, errors.NewBadRequest("not implemented") // TODO
+	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
+
+	log.Info("SnapshotReconciler entered")
+	defer log.Info("SnapshotReconciler exited")
+
+	snapshot := &v1alpha1.Snapshot{}
+	if err := r.Get(ctx, req.NamespacedName, snapshot); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	log.Info("SnapshotReconciler NewThinBlobManager", "name", snapshot.Name)
+
+	// This is a hack: the CSI gRPC handler doesn't have direct access to
+	// the VG name and the ThinBlobManager doesn't use the VG name for
+	// snapshot creation/deletion, so an empty string can be passed here.
+	vgName := ""
+
+	// TODO Return an error if the volume is Linear rather than Thin.
+	blobMgr := blobs.NewThinBlobManager(r.Client, r.Scheme, vgName)
+
+	var err error
+	if snapshot.DeletionTimestamp != nil {
+		err = r.reconcileDeleting(ctx, blobMgr, snapshot)
+	} else {
+		err = r.reconcileNotDeleting(ctx, blobMgr, snapshot)
+	}
+
+	if _, ok := err.(*util.WatchPending); ok {
+		log.Info("SnapshotReconciler waiting for Watch")
+		err = nil
+	}
+
+	return ctrl.Result{}, err
+}
+
+func (r *SnapshotReconciler) statusUpdate(ctx context.Context, snapshot *v1alpha1.Snapshot) error {
+	snapshot.Status.ObservedGeneration = snapshot.Generation
+	return r.Status().Update(ctx, snapshot)
 }
