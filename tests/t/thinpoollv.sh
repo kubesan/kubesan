@@ -32,14 +32,24 @@ spec:
       state:
         name: Inactive
 "
-ksan-poll 1 30 "[[ \"\$(kubectl get --namespace kubesan-system -o=jsonpath='{.status.thinLvs[0].name}' thinpoollv thinpoollv)\" = thinlv ]]"
+ksan-poll 1 30 "[[ -n \"\$(kubectl get --namespace kubesan-system -o=jsonpath='{.status.thinLvs[?(@.name==\"thinlv\")].name}' thinpoollv thinpoollv)\" ]]"
 
 ksan-stage "Requesting thin LV deletion..."
-kubectl patch --namespace kubesan-system thinpoollv thinpoollv --type json --patch '[{"op": "replace", "path": "/spec/thinLvs/0/state/name", "value": "Removed"}]'
-ksan-poll 1 30 "[[ \"\$(kubectl get --namespace kubesan-system -o=jsonpath='{.status.thinLvs[0].state.name}' thinpoollv thinpoollv)\" = \"Removed\" ]]"
+kubectl patch --namespace kubesan-system thinpoollv thinpoollv --type json --patch '
+[
+  {"op": "test", "path": "/spec/thinLvs/0/name", "value": "thinlv"},
+  {"op": "replace", "path": "/spec/thinLvs/0/state/name", "value": "Removed"}
+]
+'
+ksan-poll 1 30 "[[ \"\$(kubectl get --namespace kubesan-system -o=jsonpath='{.status.thinLvs[?(@.name==\"thinlv\")].state.name}' thinpoollv thinpoollv)\" = \"Removed\" ]]"
 
 ksan-stage "Removing thin LV from Spec..."
-kubectl patch --namespace kubesan-system thinpoollv thinpoollv --type json --patch '[{"op": "remove", "path": "/spec/thinLvs/0"}]'
+kubectl patch --namespace kubesan-system thinpoollv thinpoollv --type json --patch '
+[
+  {"op": "test", "path": "/spec/thinLvs/0/name", "value": "thinlv"},
+  {"op": "remove", "path": "/spec/thinLvs/0"}
+]
+'
 ksan-poll 1 30 "[[ -z \"\$(kubectl get --namespace kubesan-system -o=jsonpath='{.status.thinLvs}' thinpoollv thinpoollv)\" ]]"
 
 ksan-stage "Deleting ThinPoolLv..."
