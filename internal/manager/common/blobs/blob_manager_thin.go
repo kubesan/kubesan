@@ -25,7 +25,6 @@ import (
 type ThinBlobManager struct {
 	client client.Client
 	scheme *runtime.Scheme
-	owner  metav1.Object
 	vgName string
 }
 
@@ -34,14 +33,10 @@ type ThinBlobManager struct {
 // Direct ReadWriteMany access is not supported and needs to be provided via
 // another means like NBD. Thin LVs are good for general use cases and virtual
 // machines.
-//
-// ThinBlobManager creates Kubernetes resources with a controller reference to
-// the owner object passed to this function.
-func NewThinBlobManager(client client.Client, scheme *runtime.Scheme, owner metav1.Object, vgName string) BlobManager {
+func NewThinBlobManager(client client.Client, scheme *runtime.Scheme, vgName string) BlobManager {
 	return &ThinBlobManager{
 		client: client,
 		scheme: scheme,
-		owner:  owner,
 		vgName: vgName,
 	}
 }
@@ -56,7 +51,7 @@ func (m *ThinBlobManager) getThinPoolLv(ctx context.Context, name string) (*v1al
 	return thinPoolLv, nil
 }
 
-func (m *ThinBlobManager) createThinPoolLv(ctx context.Context, name string, sizeBytes int64) (*v1alpha1.ThinPoolLv, error) {
+func (m *ThinBlobManager) createThinPoolLv(ctx context.Context, name string, sizeBytes int64, owner client.Object) (*v1alpha1.ThinPoolLv, error) {
 	// Give the pool 1% more space than the volume, to account for any metadata overhead
 	// TODO: this is wasteful for large sparse volumes once auto-extend is working. Find a better heuristic for this, maybe max(min(size, 1G),size/10)
 	paddedSize := sizeBytes + ((sizeBytes/100)+511)/512*512
@@ -72,7 +67,7 @@ func (m *ThinBlobManager) createThinPoolLv(ctx context.Context, name string, siz
 	}
 	controllerutil.AddFinalizer(thinPoolLv, config.Finalizer)
 
-	if err := controllerutil.SetControllerReference(m.owner, thinPoolLv, m.scheme); err != nil {
+	if err := controllerutil.SetOwnerReference(owner, thinPoolLv, m.scheme); err != nil {
 		return nil, err
 	}
 
@@ -150,10 +145,10 @@ func (m *ThinBlobManager) forgetRemovedThinLv(ctx context.Context, thinPoolLv *v
 	return nil // not found, treat as already deleted
 }
 
-func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64) error {
+func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64, owner client.Object) error {
 	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
 
-	thinPoolLv, err := m.createThinPoolLv(ctx, name, sizeBytes)
+	thinPoolLv, err := m.createThinPoolLv(ctx, name, sizeBytes, owner)
 	if err != nil {
 		log.Error(err, "CreateBlob createThinPoolLv failed")
 		return err
@@ -187,7 +182,7 @@ func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes
 	return err
 }
 
-func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string) error {
+func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string, owner client.Object) error {
 	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
 
 	thinPoolLv, err := m.getThinPoolLv(ctx, name)
@@ -220,30 +215,11 @@ func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string) error {
 		return &util.WatchPending{}
 	}
 
-	// orphan thinPoolLv since we don't need it anymore but snapshots may still need it
-	// TODO can this introduce leaks?
-
-	if controllerutil.HasControllerReference(thinPoolLv) {
-		err = controllerutil.RemoveControllerReference(m.owner, thinPoolLv, m.scheme)
-		if err != nil {
-			log.Error(err, "RemoveControllerReference failed")
-			return err
-		}
-	}
-
-	// update thinPoolLv to remove controller reference or clear Spec.ActiveOnNode, if necessary
+	// update thinPoolLv to clear Spec.ActiveOnNode, if necessary
 
 	err = thinpoollv.UpdateThinPoolLv(ctx, m.client, oldThinPoolLv, thinPoolLv)
 	if err != nil {
 		log.Error(err, "RemoveBlob UpdateThinPoolLv failed")
-		return err
-	}
-
-	// delete thinPoolLv without waiting, snapshots may still need it
-
-	propagation := client.PropagationPolicy(metav1.DeletePropagationForeground)
-
-	if err := m.client.Delete(ctx, thinPoolLv, propagation); err != nil && !errors.IsNotFound(err) {
 		return err
 	}
 

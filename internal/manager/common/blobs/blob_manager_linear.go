@@ -16,7 +16,6 @@ import (
 // Per-reconcile invocation state
 type LinearBlobManager struct {
 	workers *workers.Workers
-	owner   client.Object
 	vgName  string
 }
 
@@ -25,10 +24,9 @@ type LinearBlobManager struct {
 // ReadWriteMany without NBD when used without LVM's COW snapshots. They are a
 // natural fit for use cases that require constant RWX and do not need
 // snapshots.
-func NewLinearBlobManager(workers *workers.Workers, owner client.Object, vgName string) BlobManager {
+func NewLinearBlobManager(workers *workers.Workers, vgName string) BlobManager {
 	return &LinearBlobManager{
 		workers: workers,
-		owner:   owner,
 		vgName:  vgName,
 	}
 }
@@ -55,7 +53,7 @@ func (m *LinearBlobManager) blkdiscardWorkName(name string) string {
 	return fmt.Sprintf("blkdiscard/%s/%s", m.vgName, name)
 }
 
-func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64) error {
+func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64, owner client.Object) error {
 	_, err := commands.LvmLvCreateIdempotent(
 		"--devicesfile", m.vgName,
 		"--activate", "n",
@@ -87,7 +85,7 @@ func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeByt
 			vgName: m.vgName,
 			lvName: name,
 		}
-		err := m.workers.Run(m.blkdiscardWorkName(name), m.owner, work)
+		err := m.workers.Run(m.blkdiscardWorkName(name), owner, work)
 		if err != nil {
 			return err
 		}
@@ -101,7 +99,7 @@ func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeByt
 	return nil
 }
 
-func (m *LinearBlobManager) RemoveBlob(ctx context.Context, name string) error {
+func (m *LinearBlobManager) RemoveBlob(ctx context.Context, name string, owner client.Object) error {
 	// stop blkdiscard in case it's running
 	if err := m.workers.Cancel(m.blkdiscardWorkName(name)); err != nil {
 		return err

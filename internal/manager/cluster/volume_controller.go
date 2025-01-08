@@ -10,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -35,11 +36,11 @@ func SetUpVolumeReconciler(mgr ctrl.Manager) error {
 		workers: workers.NewWorkers(),
 	}
 
-	builder := ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Volume{}).
-		Owns(&v1alpha1.ThinPoolLv{}) // for ThinBlobManager
-	r.workers.SetUpReconciler(builder)
-	return builder.Complete(r)
+		Owns(&v1alpha1.ThinPoolLv{}, builder.MatchEveryOwner) // for ThinBlobManager
+	r.workers.SetUpReconciler(b)
+	return b.Complete(r)
 }
 
 // +kubebuilder:rbac:groups=kubesan.gitlab.io,resources=volumes,verbs=get;list;watch;create;update;patch;delete,namespace=kubesan-system
@@ -49,9 +50,9 @@ func SetUpVolumeReconciler(mgr ctrl.Manager) error {
 func (r *VolumeReconciler) newBlobManager(volume *v1alpha1.Volume) (blobs.BlobManager, error) {
 	switch volume.Spec.Mode {
 	case v1alpha1.VolumeModeThin:
-		return blobs.NewThinBlobManager(r.Client, r.Scheme, volume, volume.Spec.VgName), nil
+		return blobs.NewThinBlobManager(r.Client, r.Scheme, volume.Spec.VgName), nil
 	case v1alpha1.VolumeModeLinear:
-		return blobs.NewLinearBlobManager(r.workers, volume, volume.Spec.VgName), nil
+		return blobs.NewLinearBlobManager(r.workers, volume.Spec.VgName), nil
 	default:
 		return nil, errors.NewBadRequest("invalid volume mode")
 	}
@@ -65,7 +66,7 @@ func (r *VolumeReconciler) reconcileDeleting(ctx context.Context, blobMgr blobs.
 		return nil // wait until no longer attached
 	}
 
-	if err := blobMgr.RemoveBlob(ctx, volume.Name); err != nil {
+	if err := blobMgr.RemoveBlob(ctx, volume.Name, volume); err != nil {
 		if _, ok := err.(*util.WatchPending); ok {
 			log.Info("RemoveBlob waiting for Watch")
 			return nil // wait until Watch triggers
@@ -97,7 +98,7 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable) {
 		log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
-		err := blobMgr.CreateBlob(ctx, volume.Name, volume.Spec.SizeBytes)
+		err := blobMgr.CreateBlob(ctx, volume.Name, volume.Spec.SizeBytes, volume)
 		if err != nil {
 			if _, ok := err.(*util.WatchPending); ok {
 				log.Info("CreateBlob waiting for Watch")
