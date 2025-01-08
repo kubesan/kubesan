@@ -20,7 +20,7 @@ EOF
 ksan-poll 1 30 '[[ "$(ksan-get-condition thinpoollv thinpoollv Available)" == True ]]'
 
 ksan-stage "Creating thin LV..."
-kubectl patch --namespace kubesan-system thinpoollv thinpoollv --type merge --patch """
+kubectl patch --namespace kubesan-system thinpoollv thinpoollv --type merge --patch "
 spec:
   activeOnNode: $(__ksan-get-node-name 0)
   thinLvs:
@@ -31,7 +31,7 @@ spec:
       sizeBytes: 67108864
       state:
         name: Inactive
-"""
+"
 ksan-poll 1 30 "[[ \"\$(kubectl get --namespace kubesan-system -o=jsonpath='{.status.thinLvs[0].name}' thinpoollv thinpoollv)\" = thinlv ]]"
 
 ksan-stage "Requesting thin LV deletion..."
