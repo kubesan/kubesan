@@ -10,6 +10,7 @@ import (
 	"math"
 	"regexp"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -477,6 +478,77 @@ func copyKnownParameters(parameters map[string]string) map[string]string {
 		}
 	}
 	return result
+}
+
+func (s *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumesRequest) (*csi.ListVolumesResponse, error) {
+
+	// retrieve all volumes
+	volumeList := &v1alpha1.VolumeList{}
+	if err := s.client.Client.List(ctx, volumeList); err != nil {
+		return nil, err
+	}
+
+	// validate pagination inputs
+
+	startingToken, err := strconv.Atoi(req.StartingToken)
+	if (err != nil || startingToken < 0) && req.StartingToken != "" {
+		return nil, status.Error(codes.Aborted, "StartingToken does not match a token returned by an earlier call")
+	} else if startingToken >= len(volumeList.Items) && len(volumeList.Items) != 0 {
+		return nil, status.Error(codes.Aborted, "No volume at StartingToken")
+	}
+
+	maxEntries := int(req.MaxEntries)
+	if maxEntries < 0 {
+		return nil, status.Error(codes.InvalidArgument, "MaxEntries cannot be negative")
+	} else if maxEntries == 0 {
+		maxEntries = len(volumeList.Items)
+	}
+
+	endToken := len(volumeList.Items)
+	if startingToken+maxEntries < len(volumeList.Items) {
+		endToken = startingToken + maxEntries
+	}
+
+	listVolumeEntries := make([]*csi.ListVolumesResponse_Entry, 0, endToken-startingToken)
+
+	for i := startingToken; i < endToken; i++ {
+		volume := volumeList.Items[i]
+		abnormal := false
+		message := "Volume is operational"
+		cond := meta.FindStatusCondition(volume.Status.Conditions, v1alpha1.VolumeConditionAbnormal)
+
+		if cond != nil && cond.Status == metav1.ConditionTrue {
+			abnormal = true
+			message = cond.Message
+		}
+
+		entry := csi.ListVolumesResponse_Entry{
+			Volume: &csi.Volume{
+				CapacityBytes: volume.Status.SizeBytes,
+				VolumeId:      volume.Spec.VgName,
+			},
+			Status: &csi.ListVolumesResponse_VolumeStatus{
+				VolumeCondition: &csi.VolumeCondition{
+					Abnormal: abnormal,
+					Message:  message,
+				},
+				PublishedNodeIds: volume.Status.AttachedToNodes,
+			},
+		}
+
+		listVolumeEntries = append(listVolumeEntries, &entry)
+	}
+
+	// nextToken is empty if end of volumeList was reached
+	nextToken := strconv.Itoa(endToken)
+	if endToken == len(volumeList.Items) {
+		nextToken = ""
+	}
+
+	return &csi.ListVolumesResponse{
+		Entries:   listVolumeEntries,
+		NextToken: nextToken,
+	}, nil
 }
 
 // func (s *ControllerServer) createVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {

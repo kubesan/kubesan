@@ -178,6 +178,7 @@ spec:
                   Available: The LVM volume has been created
                   DataSourceCompleted: Any data source has been copied into the LVM,
                   so that it is now ready to be attached to nodes
+                  Abnormal: Indicates the health of a volume
                 items:
                   description: "Condition contains details for one aspect of the current
                     state of this API Resource.\n---\nThis struct is intended for
