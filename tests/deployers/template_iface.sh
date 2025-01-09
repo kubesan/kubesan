@@ -153,7 +153,7 @@ __is_template_cluster_running() {
         for node in $templatenodes; do
             if [[ $(__template info plan $1 -o json -q | jq -r '.[] | select(.name == "'$node'") | .status') != up ]]; then
                 return 1
-	    fi
+            fi
             kstatus=$(kubectl get nodes/$node --output=json 2>/dev/null | \
                       jq -r '.status.conditions[] | select(.reason == "KubeletReady") | .type')
             if [[ "${kstatus}" != "Ready" ]]; then

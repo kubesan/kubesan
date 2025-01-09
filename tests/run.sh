@@ -57,7 +57,7 @@ while (( $# > 0 )); do
             # shellcheck disable=SC2034
             pause_on_stage=1
             ;;
-	--use)
+        --use)
             shift
             deploy_tool=$1
             ;;
@@ -250,7 +250,7 @@ __run() {
     if (( requires_local_deploy )); then
         __get_a_current_cluster
     else
-	__get_${deploy_tool}_current_cluster
+        __get_${deploy_tool}_current_cluster
     fi
 
     # minikube specifically is able to update and manage kubeconfig
@@ -293,17 +293,42 @@ __run() {
 
         if (( install_kubesan )); then
             __log_cyan "Installing KubeSAN..."
+            if (( requires_snapshotter )); then
+                base_url=https://github.com/kubernetes-csi/external-snapshotter
+                snapshot_resources="
+  - ${base_url}/client/config/crd?ref=v8.2.0
+  - ${base_url}/deploy/kubernetes/snapshot-controller?ref=v8.2.0
+"
+            else
+                snapshot_resources=
+            fi
             cat >${temp_dir}/kustomization.yaml <<EOF
 resources:
   - $(realpath --relative-to=${temp_dir} ${repo_root})/deploy/kubernetes
+${snapshot_resources}
 images:
   - name: quay.io/kubesan/kubesan
     newName: ${ksanregistry}/kubesan/kubesan
     newTag: test
+patches:
+  # Slow down liveness probe to once a minute, instead of every 2 seconds
+  - target:
+      kind: Deployment
+      name: csi-controller-plugin
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/livenessProbe/periodSeconds
+        value: 60
+  - target:
+      kind: DaemonSet
+      name: csi-node-plugin
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/livenessProbe/periodSeconds
+        value: 60
 EOF
             if (( requires_image_pull_policy_always )); then
                 cat >>${temp_dir}/kustomization.yaml <<EOF
-patches:
   - target:
       kind: Deployment
     patch: |-
@@ -320,11 +345,7 @@ EOF
             fi
             kubectl apply -k ${temp_dir}
             sed -E "s/@@MODE@@/$mode/g" "${script_dir}/t-data/storage-class.yaml" | kubectl create -f -
-        fi
-
-        # an externally deployed cluster might already have a snapshot class
-        if (( requires_snapshotter )); then
-            __setup_snapshotter "${current_cluster}"
+            kubectl create -f "${script_dir}/t-data/volume-snapshot-class.yaml"
         fi
 
         # If pods aren't healthy quickly, dump some logs before failing to

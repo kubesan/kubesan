@@ -42,6 +42,18 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+          ports:
+            - containerPort: 9808
+              name: healthz
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 10
+            timeoutSeconds: 3
+            periodSeconds: 2
           volumeMounts:
             - name: kubelet-dir
               mountPropagation: Bidirectional # for Filesystem volume mounting
@@ -50,8 +62,6 @@ spec:
               mountPath: /run/csi
             - name: dev
               mountPath: /dev
-            - name: run-kubesan-nbd
-              mountPath: /run/kubesan/nbd
           securityContext:
             privileged: true
           # TODO(user): Configure the resources accordingly based on the project requirements.
@@ -70,6 +80,20 @@ spec:
           volumeMounts:
             - name: registration-dir
               mountPath: /registration
+            - name: socket-dir
+              mountPath: /run/csi
+          # TODO(user): Configure the resources accordingly based on the project requirements.
+          # More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
+          resources:
+            limits:
+              cpu: 500m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 64Mi
+        - name: liveness-probe
+          image: registry.k8s.io/sig-storage/livenessprobe:v2.14.0
+          volumeMounts:
             - name: socket-dir
               mountPath: /run/csi
           # TODO(user): Configure the resources accordingly based on the project requirements.
@@ -101,7 +125,3 @@ spec:
           hostPath:
             path: /dev
             type: Directory
-        - name: run-kubesan-nbd
-          hostPath:
-            path: /run/kubesan/nbd
-            type: DirectoryOrCreate

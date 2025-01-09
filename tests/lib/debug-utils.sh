@@ -44,6 +44,6 @@ ksan-reimage() {
         __${deploy_tool}_image_upload "${current_cluster}" "${image}"
     done
     # Tell the DaemonSet and Deployment to restart with the new image
-    kubectl delete --namespace kubesan-system --selector app.kubernetes.io/name=kubesan pod
+    kubectl delete --namespace kubesan-system --selector app.kubernetes.io/name=kubesan pod --timeout=30s || echo "reimage may have failed"
 }
 export -f ksan-reimage
