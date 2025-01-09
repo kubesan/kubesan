@@ -40,8 +40,6 @@ ksan-create-volume() {
     size=$2
     access=$3
 
-    ksan-stage "Creating volume \"$name\"..."
-
     kubectl create -f - <<EOF
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -57,7 +55,7 @@ spec:
   volumeMode: Block
 EOF
 
-    ksan-wait-for-pvc-to-be-bound 300 "$name"
+    ksan-wait-for-pvc-to-be-bound 60 "$name"
 }
 
 # Usage: ksan-create-rwo-volume <name> <size>
@@ -92,7 +90,7 @@ spec:
   volumeMode: Filesystem
 EOF
 
-    ksan-wait-for-pvc-to-be-bound 300 "$name"
+    ksan-wait-for-pvc-to-be-bound 60 "$name"
 }
 
 # Usage: ksan-fill-volume <name> <size_mb>
@@ -132,8 +130,6 @@ EOF
 ksan-create-snapshot() {
     volume=$1
     snapshot=$2
-
-    ksan-stage "Snapshotting \"$volume\"..."
 
     kubectl create -f - <<EOF
 apiVersion: snapshot.storage.k8s.io/v1

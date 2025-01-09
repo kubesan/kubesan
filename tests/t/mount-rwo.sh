@@ -5,24 +5,7 @@ ksan-supported-modes Linear Thin
 ksan-stage 'Provisioning %d volumes...' "${#NODES[@]}"
 
 for i in "${!NODES[@]}"; do
-    kubectl create -f - <<EOF
-    apiVersion: v1
-    kind: PersistentVolumeClaim
-    metadata:
-      name: test-pvc-$i
-    spec:
-      storageClassName: kubesan
-      accessModes:
-        - ReadWriteOnce
-      resources:
-        requests:
-          storage: 64Mi
-      volumeMode: Block
-EOF
-done
-
-for i in "${!NODES[@]}"; do
-    ksan-wait-for-pvc-to-be-bound 300 "test-pvc-$i"
+    ksan-create-rwo-volume test-pvc-$i 64Mi
 done
 
 ksan-stage 'Mounting each volume read-write on a different node...'

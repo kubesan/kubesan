@@ -47,8 +47,8 @@ EOF
 make_pvc kubesan
 make_pvc second
 
-ksan-wait-for-pvc-to-be-bound 300 "test-pvc-kubesan"
-ksan-wait-for-pvc-to-be-bound 300 "test-pvc-second"
+ksan-wait-for-pvc-to-be-bound 60 "test-pvc-kubesan"
+ksan-wait-for-pvc-to-be-bound 60 "test-pvc-second"
 
 ksan-stage 'Mounting both volumes read-write...'
 

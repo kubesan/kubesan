@@ -2,14 +2,18 @@
 
 ksan-supported-modes # TODO add Thin when snapshots are implemented
 
+ksan-stage 'Creating volume...'
 ksan-create-rwo-volume test-pvc-1 64Mi
 ksan-fill-volume test-pvc-1 64
+
+ksan-stage 'Creating snapshot 1...'
 ksan-create-snapshot test-pvc-1 test-vs-1
 
 ksan-stage 'Deleting snapshot of volume 1...'
 
 kubectl delete vs test-vs-1 --timeout=60s
 
+ksan-stage 'Recreating snapshot 1...'
 ksan-create-snapshot test-pvc-1 test-vs-1
 
 ksan-stage 'Creating volume 2 from snapshot of volume 1...'
