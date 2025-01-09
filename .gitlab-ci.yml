@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+# We do our CI testing via a webhook out to Jenkins.  However, gitlab
+# refuses to let us do a merge train unless we have this file with at
+# least one job, even though we don't do any work via gitlab's runner.
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+external-job:
+  script:
+    - echo see Jenkins
+    - sleep 60 # Long enough to let Jenkins get its stage registered
