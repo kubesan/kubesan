@@ -80,6 +80,19 @@ func thinPoolLvNeedsActivation(thinPoolLv *v1alpha1.ThinPoolLv) bool {
 		}
 	}
 
+	for i := range thinPoolLv.Status.ThinLvs {
+		thinLvStatus := &thinPoolLv.Status.ThinLvs[i]
+
+		// Spec.ThinLvs[] element has been removed but corresponding
+		// Status.ThinLvs[] hasn't been cleaned up by ThinPoolLv node
+		// controller yet
+
+		if thinLvStatus.State.Name == v1alpha1.ThinLvStatusStateNameRemoved &&
+			thinPoolLv.Spec.FindThinLv(thinLvStatus.Name) == nil {
+			return true
+		}
+	}
+
 	return false
 }
 
