@@ -18,7 +18,7 @@ import (
 // Returns the thin LV name given the volume's name. This is necessary because
 // thin-pool LV and thin LV names are in the same namespace and must be unique.
 func VolumeToThinLvName(volumeName string) string {
-	return volumeName + "-thin"
+	return "thin-" + volumeName
 }
 
 // Maps from ThinLvSpecState.Name to ThinLvStatusState.Name
