@@ -41,11 +41,6 @@ spec:
       jsonPath: .status.sizeBytes
       name: Size
       type: integer
-    - description: '''filesystem type (blank if block)'''
-      jsonPath: .status.fsType
-      name: FSType
-      priority: 1
-      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -160,12 +155,6 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              fsType:
-                description: The file system type of the snapshot. `nil` if a snapshot
-                  of a block volume.
-                type: string
-                x-kubernetes-validations:
-                - rule: oldSelf==self
               observedGeneration:
                 description: |-
                   The generation of the spec used to produce this status.  Useful
@@ -176,8 +165,6 @@ spec:
                 description: The size of the snapshot, immutable once set.
                 format: int64
                 type: integer
-                x-kubernetes-validations:
-                - rule: oldSelf==self
             required:
             - observedGeneration
             - sizeBytes

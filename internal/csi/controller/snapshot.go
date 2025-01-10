@@ -59,7 +59,7 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 
 	resp := &csi.CreateSnapshotResponse{
 		Snapshot: &csi.Snapshot{
-			SizeBytes:      *snapshot.Status.SizeBytes,
+			SizeBytes:      snapshot.Status.SizeBytes,
 			SnapshotId:     snapshot.Name,
 			SourceVolumeId: snapshot.Spec.SourceVolume,
 			CreationTime:   timestamppb.New(condition.LastTransitionTime.Time),
