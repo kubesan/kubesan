@@ -50,15 +50,10 @@ func SetUpVolumeNodeReconciler(mgr ctrl.Manager) error {
 
 // Ensure that the volume is attached to this node.
 // May fail with WatchPending if another reconcile will trigger progress.
+// Triggered by CSI NodeStageVolume.
 func (r *VolumeNodeReconciler) reconcileThinAttaching(ctx context.Context, volume *v1alpha1.Volume, thinPoolLv *v1alpha1.ThinPoolLv) error {
 	oldThinPoolLv := thinPoolLv.DeepCopy()
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
-
-	if thinPoolLv.Spec.ActiveOnNode != "" && thinPoolLv.Spec.ActiveOnNode != config.LocalNodeName {
-		log.Info("Attaching to this node but already active on another node", "Spec.ActiveOnNode", thinPoolLv.Spec.ActiveOnNode)
-		return errors.NewBadRequest("attaching via NBD not yet implemented")
-	}
-	thinPoolLv.Spec.ActiveOnNode = config.LocalNodeName
 
 	if err := dm.Create(ctx, volume.Name, volume.Spec.SizeBytes); err != nil {
 		return err
@@ -66,24 +61,51 @@ func (r *VolumeNodeReconciler) reconcileThinAttaching(ctx context.Context, volum
 
 	thinLvName := thinpoollv.VolumeToThinLvName(volume.Name)
 	thinLvSpec := thinPoolLv.Spec.FindThinLv(thinLvName)
-	if thinLvSpec != nil && thinLvSpec.State.Name == v1alpha1.ThinLvSpecStateNameInactive {
-		thinLvSpec.State = v1alpha1.ThinLvSpecState{
-			Name: v1alpha1.ThinLvSpecStateNameActive,
-		}
+	if thinLvSpec == nil || thinLvSpec.State.Name == v1alpha1.ThinLvSpecStateNameRemoved {
+		return errors.NewBadRequest("unexpected missing blob")
+	} else {
+		thinLvSpec.State.Name = v1alpha1.ThinLvSpecStateNameActive
 	}
 
+	// Update the ThinPool activation claims.
+	thinPoolLv.Spec.ActiveOnNode = volume.Spec.AttachToNodes[0]
 	if err := thinpoollv.UpdateThinPoolLv(ctx, r.Client, oldThinPoolLv, thinPoolLv); err != nil {
 		return err
 	}
 
-	if !isThinLvActiveOnLocalNode(thinPoolLv, thinLvName) {
-		return &util.WatchPending{}
-	}
+	var device string
+	if thinPoolLv.Spec.ActiveOnNode == config.LocalNodeName {
+		// This node claimed activation rights, make sure the claim
+		// is honored before actually resuming the dm
+		log.Info("Attaching on local node")
+		if !isThinLvActiveOnLocalNode(thinPoolLv, thinLvName) {
+			return &util.WatchPending{}
+		}
+		device = devName(volume)
+	} else {
+		// Another node claimed activation rights, make sure there
+		// is an NBD export, and connect to it before resuming the dm
+		log.Info("Attaching via NBD client")
+		if volume.Status.NBDExport == "" {
+			return &util.WatchPending{}
+		}
+		nbdExport := &v1alpha1.NBDExport{}
+		err := r.Get(ctx, types.NamespacedName{Name: volume.Status.NBDExport, Namespace: config.Namespace}, nbdExport)
+		if client.IgnoreNotFound(err) != nil {
+			return err
+		}
 
-	return dm.Resume(ctx, volume.Name, volume.Spec.SizeBytes, devName(volume))
+		device, err = nbd.ConnectClient(ctx, r.Client, nbdExport)
+		if err != nil {
+			return err
+		}
+	}
+	log.Info("Device ready to attach", "device", device)
+	return dm.Resume(ctx, volume.Name, volume.Spec.SizeBytes, device)
 }
 
 // Ensure that the volume is detached from this node.
+// Triggered by CSI NodeUnstageVolume.
 func (r *VolumeNodeReconciler) reconcileThinDetaching(ctx context.Context, volume *v1alpha1.Volume, thinPoolLv *v1alpha1.ThinPoolLv) error {
 	oldThinPoolLv := thinPoolLv.DeepCopy()
 
@@ -218,10 +240,8 @@ func isThinLvActiveOnLocalNode(thinPoolLv *v1alpha1.ThinPoolLv, name string) boo
 }
 
 // Update Volume.Status.AttachedToNodes[] from the ThinPoolLv.
-func (r *VolumeNodeReconciler) updateStatusAttachedToNodes(ctx context.Context, volume *v1alpha1.Volume, thinPoolLv *v1alpha1.ThinPoolLv) error {
-	thinLvName := thinpoollv.VolumeToThinLvName(volume.Name)
-
-	if isThinLvActiveOnLocalNode(thinPoolLv, thinLvName) {
+func (r *VolumeNodeReconciler) updateStatusAttachedToNodes(ctx context.Context, volume *v1alpha1.Volume, attached bool) error {
+	if attached {
 		if !slices.Contains(volume.Status.AttachedToNodes, config.LocalNodeName) {
 			volume.Status.AttachedToNodes = append(volume.Status.AttachedToNodes, config.LocalNodeName)
 
@@ -258,17 +278,20 @@ func (r *VolumeNodeReconciler) reconcileThin(ctx context.Context, volume *v1alph
 		return err
 	}
 
+	var attached bool
 	if slices.Contains(volume.Spec.AttachToNodes, config.LocalNodeName) {
 		err = r.reconcileThinAttaching(ctx, volume, thinPoolLv)
+		attached = true
 	} else {
 		err = r.reconcileThinDetaching(ctx, volume, thinPoolLv)
+		attached = false
 	}
 
 	if err != nil {
 		return err
 	}
 
-	if err := r.updateStatusAttachedToNodes(ctx, volume, thinPoolLv); err != nil {
+	if err := r.updateStatusAttachedToNodes(ctx, volume, attached); err != nil {
 		return err
 	}
 
