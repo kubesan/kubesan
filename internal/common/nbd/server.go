@@ -26,25 +26,15 @@ const (
 	QmpSockPath = "/run/qsd/qmp.sock"
 )
 
-// The Volume code will name the NBDExport CR Node-Volume-thin (where
-// Volume==Export); but it is easier to pass items explicitly than trying
-// to parse items out of a CR name.
-type ServerId struct {
-	// The node to which the server should be scheduled.
-	Node string
-
-	// The export name
-	Export string
-}
-
 // A QEMU Monitor Protocol (QMP) connection to a qemu-storage-daemon instance
 // that is running an NBD server.
 type qemuStorageDaemonMonitor struct {
 	monitor qmp.Monitor
 }
 
-func newQemuStorageDaemonMonitor(path string) (*qemuStorageDaemonMonitor, error) {
-	monitor, err := qmp.NewSocketMonitor("unix", path, 100*time.Millisecond)
+// Connect to the monitor of the companion q-s-d container.
+func newQemuStorageDaemonMonitor() (*qemuStorageDaemonMonitor, error) {
+	monitor, err := qmp.NewSocketMonitor("unix", QmpSockPath, 100*time.Millisecond)
 	if err != nil {
 		return nil, err
 	}
@@ -207,22 +197,22 @@ func blockExportId(export string) string {
 	return "export-" + export
 }
 
-// Returns success only once the server is running and has the TCP port open.
-func StartServer(ctx context.Context, id *ServerId, devicePathOnHost string) (string, error) {
-	qsd, err := newQemuStorageDaemonMonitor(QmpSockPath)
+// Returns success only once the server is serving the export.
+func StartExport(ctx context.Context, export string, devicePathOnHost string) (string, error) {
+	qsd, err := newQemuStorageDaemonMonitor()
 	if err != nil {
 		return "", err
 	}
 	defer qsd.Close()
 
-	nodeName := nodeName(id.Export)
+	nodeName := nodeName(export)
 	err = qsd.BlockdevAdd(ctx, nodeName, devicePathOnHost)
 	if err != nil {
 		return "", err
 	}
 
-	blockExportId := blockExportId(id.Export)
-	err = qsd.BlockExportAdd(ctx, blockExportId, nodeName, id.Export)
+	blockExportId := blockExportId(export)
+	err = qsd.BlockExportAdd(ctx, blockExportId, nodeName, export)
 	if err != nil {
 		return "", err
 	}
@@ -231,13 +221,14 @@ func StartServer(ctx context.Context, id *ServerId, devicePathOnHost string) (st
 	url := url.URL{
 		Scheme: "nbd",
 		Host:   config.PodIP,
-		Path:   id.Export,
+		Path:   export,
 	}
 	return url.String(), nil
 }
 
-func CheckServerHealth(ctx context.Context, id *ServerId) error {
-	qsd, err := newQemuStorageDaemonMonitor(QmpSockPath)
+// Check that export is still being served.
+func CheckExportHealth(ctx context.Context, export string) error {
+	qsd, err := newQemuStorageDaemonMonitor()
 	if err != nil {
 		return err
 	}
@@ -248,7 +239,7 @@ func CheckServerHealth(ctx context.Context, id *ServerId) error {
 		return err
 	}
 
-	blockExportId := blockExportId(id.Export)
+	blockExportId := blockExportId(export)
 	for i := range exports {
 		if exports[i].Id == blockExportId {
 			return nil // success
@@ -258,25 +249,26 @@ func CheckServerHealth(ctx context.Context, id *ServerId) error {
 	return k8serrors.NewServiceUnavailable("NBD server unexpectedly gone")
 }
 
-func StopServer(ctx context.Context, id *ServerId) error {
-	qsd, err := newQemuStorageDaemonMonitor(QmpSockPath)
+// Stop serving the given export.
+func StopExport(ctx context.Context, export string) error {
+	qsd, err := newQemuStorageDaemonMonitor()
 	if err != nil {
 		return err
 	}
 	defer qsd.Close()
 
-	err = qsd.BlockExportDel(ctx, blockExportId(id.Export))
+	err = qsd.BlockExportDel(ctx, blockExportId(export))
 	if err != nil {
 		return err
 	}
 
-	err = qsd.BlockdevDel(ctx, nodeName(id.Export))
+	err = qsd.BlockdevDel(ctx, nodeName(export))
 	if err != nil {
 		return err
 	}
 
 	blockdevs.Lock()
-	delete(blockdevs.m, id.Export)
+	delete(blockdevs.m, export)
 	blockdevs.Unlock()
 
 	return nil
@@ -288,12 +280,12 @@ func ExportDegraded(export *v1alpha1.NBDExport) bool {
 }
 
 // Return true if this node should stop serving the given export.
-func ShouldStopServer(export *v1alpha1.NBDExport, nodes []string) bool {
+func ShouldStopExport(export *v1alpha1.NBDExport, nodes []string) bool {
 	if export == nil || export.Spec.Host != config.LocalNodeName {
 		return false
 	}
 	if ExportDegraded(export) {
 		return true
 	}
-	return !slices.Contains(nodes, config.LocalNodeName) || (len(nodes) == 1 && nodes[0] == config.LocalNodeName)
+	return !slices.Contains(nodes, config.LocalNodeName) || len(nodes) == 1
 }

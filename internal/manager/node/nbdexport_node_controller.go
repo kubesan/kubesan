@@ -29,6 +29,8 @@ func SetUpNBDExportNodeReconciler(mgr ctrl.Manager) error {
 		Scheme: mgr.GetScheme(),
 	}
 
+	nbd.Startup()
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.NBDExport{}).
 		Complete(r)
@@ -59,15 +61,14 @@ func (r *NBDExportNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, err
 	}
 
-	if !controllerutil.ContainsFinalizer(export, config.Finalizer) {
-		controllerutil.AddFinalizer(export, config.Finalizer)
-
+	if controllerutil.AddFinalizer(export, config.Finalizer) {
 		if err := r.Update(ctx, export); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
-	if export.Spec.Path == "" {
+	if export.Spec.Path == "" && meta.IsStatusConditionTrue(export.Status.Conditions, v1alpha1.NBDExportConditionAvailable) {
+		// Set condition["available"] to false only if it was true
 		condition := metav1.Condition{
 			Type:    v1alpha1.NBDExportConditionAvailable,
 			Status:  metav1.ConditionFalse,
@@ -80,15 +81,10 @@ func (r *NBDExportNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	serverId := &nbd.ServerId{
-		Node:   config.LocalNodeName,
-		Export: export.Spec.Export,
-	}
-
 	if export.Status.URI == "" {
 		log.Info("Starting NBD export")
 
-		uri, err := nbd.StartServer(ctx, serverId, export.Spec.Path)
+		uri, err := nbd.StartExport(ctx, export.Spec.Export, export.Spec.Path)
 		if err != nil {
 			return ctrl.Result{}, err
 		}
@@ -105,19 +101,25 @@ func (r *NBDExportNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	log.Info("Checking NBD export status")
-	if err := nbd.CheckServerHealth(ctx, serverId); err != nil {
-		condition := metav1.Condition{
-			Type:    v1alpha1.NBDExportConditionAvailable,
-			Status:  metav1.ConditionFalse,
-			Reason:  "DeviceError",
-			Message: "unexpected NBD server error",
-		}
-		meta.SetStatusCondition(&export.Status.Conditions, condition)
-		if err := r.statusUpdate(ctx, export); err != nil {
+	if len(export.Spec.Clients) > 0 {
+		log.Info("Checking NBD export status")
+		if err := nbd.CheckExportHealth(ctx, export.Spec.Export); err != nil {
+			// Don't check prior state of condition["available"],
+			// because this Reason takes priority even if the
+			// export had already started clean shutdown
+			condition := metav1.Condition{
+				Type:    v1alpha1.NBDExportConditionAvailable,
+				Status:  metav1.ConditionFalse,
+				Reason:  "DeviceError",
+				Message: "unexpected NBD server error",
+			}
+			if meta.SetStatusCondition(&export.Status.Conditions, condition) {
+				if err := r.statusUpdate(ctx, export); err != nil {
+					return ctrl.Result{}, err
+				}
+			}
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
@@ -143,11 +145,7 @@ func (r *NBDExportNodeReconciler) reconcileDeleting(ctx context.Context, export 
 		return nil // wait until no longer attached
 	}
 
-	serverId := &nbd.ServerId{
-		Node:   config.LocalNodeName,
-		Export: export.Spec.Export,
-	}
-	if err := nbd.StopServer(ctx, serverId); err != nil {
+	if err := nbd.StopExport(ctx, export.Spec.Export); err != nil {
 		return err
 	}
 

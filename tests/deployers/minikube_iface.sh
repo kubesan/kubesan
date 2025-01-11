@@ -68,7 +68,7 @@ export -f __is_minikube_cluster_running
 # Usage: __start_minikube_cluster <profile> [<extra_minikube_opts...>]
 __start_minikube_cluster() {
     minikube start \
-        --iso-url=https://gitlab.com/kubesan/minikube/-/package_files/124271634/download \
+        --iso-url=https://gitlab.com/kubesan/minikube/-/package_files/160782147/download \
         --profile="$1" \
         --driver=kvm2 \
         --cpus=2 \

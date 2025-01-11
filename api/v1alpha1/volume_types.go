@@ -143,6 +143,9 @@ type VolumeStatus struct {
 	// The path at which the volume is available on nodes to which it is attached.
 	// + TODO does this have to be in Status, or can it be reliably generated/probed where needed?
 	Path string `json:"path,omitempty"`
+
+	// The name of any NBDExport serving this volume.
+	NBDExport string `json:"nbdExport,omitempty"`
 }
 
 func (v *VolumeStatus) IsAttachedToNode(node string) bool {

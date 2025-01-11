@@ -7,12 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"os/exec"
 	"path"
 	"regexp"
 	"strings"
+
+	k8serror "k8s.io/apimachinery/pkg/api/errors"
 )
 
 type Output struct {
@@ -77,6 +78,7 @@ func PathExistsOnHost(hostPath string) (bool, error) {
 
 func Dmsetup(args ...string) (Output, error) {
 	log.Printf("dmsetup command: %v", args)
+	// Use the host's dmsetup
 	return RunOnHost(append([]string{"dmsetup"}, args...)...)
 }
 
@@ -163,6 +165,7 @@ func LvmCreateProfile(name string, contents string) error {
 
 func Lvm(args ...string) (Output, error) {
 	log.Printf("LVM command: %v", args)
+	// Use the host's lvm
 	return RunOnHost(append([]string{"lvm"}, args...)...)
 }
 
@@ -229,36 +232,69 @@ func WithLvmLvActivated(vgName string, lvName string, op func() error) (err erro
 	return op()
 }
 
+// Run a command with nbd-client.
+func nbdClient(args ...string) (Output, error) {
+	log.Printf("nbd-client command: %v", args)
+	// nbd-client lives in our container, so sharing --mount (part
+	// of --all) would cause ENOENT (if the host has not installed
+	// nbd) or other problems (if the host version lacks -i). But
+	// netlink sockets may cause EACCES if we don't share --net.
+	return RunInContainer(append([]string{"nsenter", "--target", "1", "--net", "nbd-client"}, args...)...)
+}
+
 var (
-	nbdClientConnectedPattern = regexp.MustCompile(`^Connected (/dev/\S*)`)
+	nbdClientURIPattern       = regexp.MustCompile(`nbd://([^/]*)/(\S*)`)
+	nbdClientConnectedPattern = regexp.MustCompile(`Connected /dev/(\S*)`)
 )
 
-func NBDClientConnect(serverHostname string) (string, error) {
-	// we run nbd-client in the host net namespace, so we must resolve the server's hostname here
-
-	serverIps, err := net.LookupIP(serverHostname)
-	if err != nil {
-		return "", err
-	} else if len(serverIps) == 0 {
-		return "", fmt.Errorf("could not resolve hostname '%s'", serverHostname)
+// Connect to the NBD server at uri, and return the nbdX device that was
+// allocated. For safety, /sys/block/nbdX/backend will contain uri.
+func NBDClientConnect(uri string) (string, error) {
+	// nbd-client doesn't take URIs, so we have to break up the input
+	matches := nbdClientURIPattern.FindStringSubmatch(uri)
+	if matches == nil {
+		return "", k8serror.NewBadRequest("could not parse NBD URI")
 	}
 
-	output, err := RunOnHost("nbd-client", serverIps[0].String(), "--persist", "--connections", "8")
+	output, err := nbdClient("--identifier", uri, "--connections", "8", "--name", matches[2], matches[1])
 	if err != nil {
 		return "", err
 	}
 
 	match := nbdClientConnectedPattern.FindSubmatch(output.Combined)
 	if match == nil {
+		log.Printf("nbd-client output: %s", output.Combined)
+		return "", k8serror.NewBadRequest("could not parse NBD device from nbd-client")
+	}
+
+	return string(match[1]), nil
+}
+
+// Return the backend uri associated with the NBD client device, or the
+// empty string if it does not appear to be a kubesan nbd client.
+func NBDClientBackend(device string) (string, error) {
+	output, err := RunOnHost("cat", "/sys/block/"+device+"/backend")
+	if err != nil {
 		return "", err
 	}
 
-	path := string(match[1])
-
-	return path, nil
+	return strings.TrimSuffix(string(output.Combined), "\n"), nil
 }
 
-func NBDClientDisconnect(path string) error {
-	_, err := RunOnHost("nbd-client", "-d", path)
+// Disconnect the NBD client device, if it is still associated with the
+// given backend uri (if the device is already disconnected or is associated
+// with a different uri, this command is a safe no-op).
+func NBDClientDisconnect(uri, device string) error {
+	// By itself, this function has a TOCTTOU race. But as long as
+	// the caller uses a mutex around this function, we know that
+	// no other kubesan thread can win the race between our
+	// backend check and the actual disconnect call.
+	if backend, err := NBDClientBackend(device); err != nil || backend != uri {
+		return err
+	}
+	// TODO: Once the kernel and nbd-client support it, we should pass
+	// --identifier uri to the disconnect call for even more safety.
+	// See https://gitlab.com/kubesan/kubesan/-/issues/88
+	_, err := nbdClient("--disconnect", "/dev/"+device)
 	return err
 }

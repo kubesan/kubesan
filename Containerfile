@@ -13,7 +13,12 @@ ARG TARGETPLATFORM
 # right architectures, while still allowing the builder to run natively.
 # CentOS Stream 9 doesn't provide package nbd
 # FROM quay.io/centos/centos:stream9
-FROM --platform=$TARGETPLATFORM quay.io/fedora/fedora:40 as target
+FROM --platform=$TARGETPLATFORM quay.io/fedora/fedora:40 AS target
+
+## --target nbd
+# Latest release of nbd 3.26 lacks patches we need for 'nbd-client -i'
+# See deps/Containerfile for reproducing this binary
+FROM --platform=$TARGETPLATFORM quay.io/kubesan/nbd-client-i:3.26.92 AS nbd
 
 ## --target builder
 # This target builds the kubesan binary, possibly with cross-compilation.
@@ -47,6 +52,7 @@ RUN dnf update -y && dnf install --nodocs --noplugins -qy nbd qemu-img util-linu
 WORKDIR /kubesan
 
 COPY --from=builder /kubesan/bin/kubesan bin/
+COPY --from=nbd /bin/nbd-client /usr/sbin/
 
 # TODO Should we use a nonroot user?
 # USER 65532:65532

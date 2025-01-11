@@ -42,9 +42,10 @@ EOF
 $ systemctl restart systemd-modules-load.service
 ```
 
-Generally you should enable as many NBD devices on each node as the
-maximum number of KubeSAN volumes you may need to have mounted
-on a single node at once.
+The NBD module requires Linux kernel 5.14 or later on all nodes of the
+cluster; this is so that KubeSAN can utilize NBD netlink configuration
+for as many NBD devices as needed, rather than having to worry about
+setting the nbds_max module parameter.
 
 ## LVM configuration
 
@@ -187,7 +188,7 @@ If you are using OpenShift Virtualization, you must also patch the corresponding
 `StorageProfile` as follows:
 
 ```console
-$ kubectl patch storageprofile my-san --type=merge -p '{"spec": {"claimPropertySets": [{"accessModes": ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany"], "volumeMode": "Block"}, {"accessModes": ["ReadWriteOnce"], "volumeMode": "Filesystem"}], "cloneStrategy": "csi-clone"}}'
+$ kubectl patch storageprofile my-san --type=merge -p '{"spec": {"claimPropertySets": [{"accessModes": ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany"], "volumeMode": "Block"}, {"accessModes": ["ReadWriteOnce"], "volumeMode": "Filesystem"}], "cloneStrategy": "copy"}}'
 ```
 
 Now you can create volumes like so:
@@ -217,17 +218,20 @@ following parameters:
   use for each volume created by this storage class, can be:
   - "Thin": Volumes are backed by a thin pool LV, and can be sparse
     (unused portions of the volume do not consume storage from the
-    VG).  Snapshots and cloning are quick, however, only one node at a
-    time has efficient access to the volume.  While it is possible to
-    have shared access to the volume across nodes, such access works
-    best if the window of time where more than one node is accessing
-    the volume is short-lived (this is tuned for how KubeVirt does
-    live-migration of storage between nodes).  In the current release,
-    support for this mode is lacking, but it will be added before
-    v1.0.0.
+    VG).  Snapshots, cloning, and online resize are quick, however,
+    only one node at a time has efficient access to the volume.  While
+    it is possible to have shared access to the volume across nodes,
+    such access works best if the window of time where more than one
+    node is accessing the volume is short-lived (this is tuned for how
+    KubeVirt does live-migration of storage between nodes).  In the
+    current release, support for this mode is incomplete (snapshots
+    and cloning are not yet implemented), but it will be completed
+    before v1.0.0.
   - "Linear": Volumes are fully allocated by a linear LV, and can be
     shared across multiple nodes with no overhead.  It is not
-    possible to take snapshots of these volumes.
+    possible to take snapshots of these volumes, and therefore not
+    possible to clone from; and volume expansion is only possible
+    offline.
 
 You can have several KubeSAN `StorageClass`es on the same cluster that
 are backed by different shared volume groups, or even multiple classes
@@ -241,9 +245,9 @@ storageclass.
 The following matrix documents setups that KubeSAN supports or plans to
 support in a future release:
 
-| Description         | RWO     | RWX     | ROX     | Snapshots | Clone   |
-| :------------------ | :------ | :------ | :------ | :-------- | :------ |
-| LinearLV Block      | Yes     | Yes     | Planned | No        | No      |
-| LinearLV Filesystem | Planned | No      | Planned | No        | No      |
-| ThinLV Block        | Planned | Planned | Planned | Planned   | Planned |
-| ThinLV Filesystem   | Planned | No      | Planned | Planned   | Planned |
+| Description         | RWO  | RWX  | ROX     | Expand  | Snapshots | Clone   |
+| :------------------ | :--- | :--- | :------ | :------ | :-------- | :------ |
+| LinearLV Block      | Yes  | Yes  | Planned | Planned | No        | No      |
+| LinearLV Filesystem | Yes  | No   | Planned | Planned | No        | No      |
+| ThinLV Block        | Yes  | Yes  | Planned | Planned | Planned   | Planned |
+| ThinLV Filesystem   | Yes  | No   | Planned | Planned | Planned   | Planned |

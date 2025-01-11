@@ -1,0 +1,69 @@
+# SPDX-License-Identifier: Apache-2.0
+ARG TARGETOS
+ARG TARGETARCH
+ARG TARGETPLATFORM
+
+# This Containerfile exists to package dependencies for kubesan, so that
+# building the kubesan container can pull in pre-built dependencies rather
+# than having to spend the time rebuilding them every time.  The containers
+# produced by this file are public at quay.io/kubesan/, but are only useful
+# for copying files from the pre-built cache over to another container,
+# and not something you would ever execute on its own.
+
+## --target kubesan-tools
+# Pre-built binaries that are only used for 'make build' of kubesan proper.
+#
+# cd path/to/kubesan.git
+# IMG=quay.io/kubesan/kubesan-tools:$VERSION
+# podman manifest create $IMG
+# podman build --all-platforms --manifest $IMG --target kubesan-tools -f deps/Containerfile .
+# podman manifest push $IMG
+
+FROM --platform=$TARGETPLATFORM quay.io/projectquay/golang:1.22 AS go-builder
+
+WORKDIR /kubesan
+COPY Makefile ./
+RUN make controller-gen golangci-lint
+
+FROM scratch AS kubesan-tools
+COPY --from=go-builder /kubesan/bin/controller-gen-* /kubesan/bin/golangci-lint-* bin/
+
+USER 65532:65532
+
+ENTRYPOINT [ "/bin/false" ]
+
+## --target nbd-client-i
+# The latest release of nbd 3.26 lacks patches we need for 'nbd-client -i'.
+#
+# cd path/to/kubesan.git
+# IMG=quay.io/kubesan/nbd-client-i:$VERSION
+# podman manifest create $IMG
+# podman build --all-platforms --manifest $IMG --target nbd-client-i -f deps/Containerfile .
+# podman manifest push $IMG
+
+FROM --platform=$TARGETPLATFORM quay.io/fedora/fedora:40 AS c-builder
+
+RUN dnf update -y && dnf -y install --nodocs --noplugins 'dnf-command(builddep)' \
+  git autoconf-archive automake libtool flex \
+&& dnf -y builddep nbd
+
+RUN git clone https://github.com/NetworkBlockDevice/nbd.git nbd \
+&& cd nbd \
+&& git checkout 87c5318abfa2049b37505d498414c2c1fef6f23a \
+&& ./autogen.sh \
+&& ./configure --disable-manpages \
+&& make
+
+FROM scratch AS nbd-client-i
+COPY --from=c-builder /nbd/nbd-client bin/
+
+USER 65532:65532
+
+ENTRYPOINT [ "/bin/false" ]
+
+## Default target.
+# This Containerfile is intentionally useless on its own, and only designed
+# to work with specific --targets.  Search for '##' above.
+FROM scratch
+
+RUN echo "Did you forget to specify --target?" && exit 1

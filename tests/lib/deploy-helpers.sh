@@ -159,7 +159,7 @@ __setup_nbd_storage() {
 
     for node in "${NODES[@]}"; do
         __${deploy_tool}_ssh "${node}" "
-            sudo modprobe nbd nbds_max=16  # for KubeSAN to use as well
+            sudo modprobe nbd
 
             __run_in_test_container --net host -- \
                 nbd-client ${NODE_IPS[0]} 10809 /dev/nbd0

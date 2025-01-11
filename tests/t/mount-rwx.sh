@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-ksan-supported-modes Linear # TODO add Thin when NBD is implemented
+ksan-supported-modes Linear Thin
 
 ksan-stage 'Provisioning volumes...'
 

@@ -67,9 +67,7 @@ func (r *ThinPoolLvReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 func (r *ThinPoolLvReconciler) reconcileNotDeleting(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv) error {
 	// add finalizer
 
-	if !controllerutil.ContainsFinalizer(thinPoolLv, config.Finalizer) {
-		controllerutil.AddFinalizer(thinPoolLv, config.Finalizer)
-
+	if controllerutil.AddFinalizer(thinPoolLv, config.Finalizer) {
 		if err := r.Update(ctx, thinPoolLv); err != nil {
 			return err
 		}

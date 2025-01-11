@@ -70,6 +70,7 @@ func (m *ThinBlobManager) createThinPoolLv(ctx context.Context, name string, siz
 			SizeBytes: paddedSize,
 		},
 	}
+	controllerutil.AddFinalizer(thinPoolLv, config.Finalizer)
 
 	if err := controllerutil.SetControllerReference(m.owner, thinPoolLv, m.scheme); err != nil {
 		return nil, err
@@ -109,7 +110,7 @@ func (m *ThinBlobManager) createThinLv(ctx context.Context, thinPoolLv *v1alpha1
 		*old = *thinlv
 	}
 
-	return thinpoollv.UpdateThinPoolLv(ctx, m.client, thinPoolLv, true)
+	return thinpoollv.UpdateThinPoolLv(ctx, m.client, nil, thinPoolLv)
 }
 
 // Is the thin LV listed in Status.ThinLvs[] with the correct size?
@@ -124,29 +125,26 @@ func (m *ThinBlobManager) checkThinLvRemoved(thinPoolLv *v1alpha1.ThinPoolLv, na
 	return thinLvStatus == nil || thinLvStatus.State.Name == v1alpha1.ThinLvStatusStateNameRemoved
 }
 
-func (m *ThinBlobManager) requestThinLvRemoval(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv, name string) error {
+func (m *ThinBlobManager) requestThinLvRemoval(ctx context.Context, oldThinPoolLv, thinPoolLv *v1alpha1.ThinPoolLv, name string) error {
 	thinLvSpec := thinPoolLv.Spec.FindThinLv(name)
 	if thinLvSpec == nil {
 		return nil // treated as already removed
 	}
 
-	needUpdate := false
-
 	if thinLvSpec.State.Name != v1alpha1.ThinLvSpecStateNameRemoved {
 		thinLvSpec.State = v1alpha1.ThinLvSpecState{
 			Name: v1alpha1.ThinLvSpecStateNameRemoved,
 		}
-		needUpdate = true
 	}
 
-	return thinpoollv.UpdateThinPoolLv(ctx, m.client, thinPoolLv, needUpdate)
+	return thinpoollv.UpdateThinPoolLv(ctx, m.client, oldThinPoolLv, thinPoolLv)
 }
 
 func (m *ThinBlobManager) forgetRemovedThinLv(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv, name string) error {
 	for i := range thinPoolLv.Spec.ThinLvs {
 		if thinPoolLv.Spec.ThinLvs[i].Name == name {
 			thinPoolLv.Spec.ThinLvs = slices.Delete(thinPoolLv.Spec.ThinLvs, i, i+1)
-			return thinpoollv.UpdateThinPoolLv(ctx, m.client, thinPoolLv, true)
+			return thinpoollv.UpdateThinPoolLv(ctx, m.client, nil, thinPoolLv)
 		}
 	}
 	return nil // not found, treat as already deleted
@@ -160,6 +158,7 @@ func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes
 		log.Error(err, "CreateBlob createThinPoolLv failed")
 		return err
 	}
+	oldThinPoolLv := thinPoolLv.DeepCopy()
 
 	thinLvName := thinpoollv.VolumeToThinLvName(name)
 	err = m.createThinLv(ctx, thinPoolLv, thinLvName, sizeBytes)
@@ -175,7 +174,7 @@ func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes
 
 	// update thinPoolLv to clear Spec.ActiveOnNode, if necessary
 
-	err = thinpoollv.UpdateThinPoolLv(ctx, m.client, thinPoolLv, false)
+	err = thinpoollv.UpdateThinPoolLv(ctx, m.client, oldThinPoolLv, thinPoolLv)
 	if err != nil {
 		log.Error(err, "CreateBlob UpdateThinPoolLv failed")
 		return err
@@ -200,8 +199,9 @@ func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string) error {
 		return err
 	}
 
+	oldThinPoolLv := thinPoolLv.DeepCopy()
 	thinLvName := thinpoollv.VolumeToThinLvName(name)
-	err = m.requestThinLvRemoval(ctx, thinPoolLv, thinLvName)
+	err = m.requestThinLvRemoval(ctx, oldThinPoolLv, thinPoolLv, thinLvName)
 	if err != nil {
 		log.Error(err, "RemoveBlob requestThinLvRemoval failed")
 		return err
@@ -223,20 +223,17 @@ func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string) error {
 	// orphan thinPoolLv since we don't need it anymore but snapshots may still need it
 	// TODO can this introduce leaks?
 
-	needUpdate := false
 	if controllerutil.HasControllerReference(thinPoolLv) {
 		err = controllerutil.RemoveControllerReference(m.owner, thinPoolLv, m.scheme)
 		if err != nil {
 			log.Error(err, "RemoveControllerReference failed")
 			return err
 		}
-
-		needUpdate = true
 	}
 
 	// update thinPoolLv to remove controller reference or clear Spec.ActiveOnNode, if necessary
 
-	err = thinpoollv.UpdateThinPoolLv(ctx, m.client, thinPoolLv, needUpdate)
+	err = thinpoollv.UpdateThinPoolLv(ctx, m.client, oldThinPoolLv, thinPoolLv)
 	if err != nil {
 		log.Error(err, "RemoveBlob UpdateThinPoolLv failed")
 		return err
