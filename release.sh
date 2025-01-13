@@ -26,7 +26,8 @@ git commit -s -m "Release ${VERSION}" -e
 
 # Run tests
 printf "${GREEN}Running tests${RESET}\n"
-tests/run.sh all
+tests/run.sh create-cache
+tests/run.sh --use-cache all
 
 # Publish container image
 printf "${GREEN}Publish container image${RESET}\n"
@@ -35,7 +36,7 @@ podman manifest push quay.io/kubesan/kubesan:${VERSION}
 
 # Publish git tag
 printf "${GREEN}Publishing git tag${RESET}\n"
-git tag -s ${VERSION} -m "" && git push origin ${VERSION}
+git tag -s ${VERSION} -m "Release ${VERSION}" && git push origin ${VERSION}
 
 # Revert tag back to 'latest'
 printf "${GREEN}Reverting kustomization.yaml tag to 'latest'${RESET}\n"
