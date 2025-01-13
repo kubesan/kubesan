@@ -8,11 +8,11 @@ images:
     newName: quay.io/kubesan/kubesan
     # To cut a release, bump the version string in
     # internal/common/config/config.go, then copy it here in place of 'latest'.
-    newTag: v0.9.0
+    newTag: latest
 
 commonLabels:
   app.kubernetes.io/name: kubesan
-  app.kubernetes.io/version: v0.9.0
+  app.kubernetes.io/version: latest
 
 resources:
   - crd
