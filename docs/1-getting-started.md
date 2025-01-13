@@ -136,13 +136,13 @@ $ sudo vgchange --devicesfile my-vg --lock-start
 If you are using OpenShift:
 
 ```console
-$ kubectl apply -k https://gitlab.com/kubesan/kubesan/deploy/openshift?ref=v0.8.0
+$ kubectl apply -k https://gitlab.com/kubesan/kubesan/deploy/openshift?ref=v0.9.0
 ```
 
 Otherwise use the vanilla Kubernetes kustomization:
 
 ```console
-$ kubectl apply -k https://gitlab.com/kubesan/kubesan/deploy/kubernetes?ref=v0.8.0
+$ kubectl apply -k https://gitlab.com/kubesan/kubesan/deploy/kubernetes?ref=v0.9.0
 ```
 
 If you wish to create snapshots of volumes, your Kubernetes cluster must have
