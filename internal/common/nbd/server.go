@@ -280,11 +280,14 @@ func ExportDegraded(export *v1alpha1.NBDExport) bool {
 }
 
 // Return true if this node should stop serving the given export.
-func ShouldStopExport(export *v1alpha1.NBDExport, nodes []string) bool {
+func ShouldStopExport(export *v1alpha1.NBDExport, nodes []string, sizeBytes int64) bool {
 	if export == nil || export.Spec.Host != config.LocalNodeName {
 		return false
 	}
 	if ExportDegraded(export) {
+		return true
+	}
+	if sizeBytes > export.Spec.SizeBytes {
 		return true
 	}
 	return !slices.Contains(nodes, config.LocalNodeName) || len(nodes) == 1

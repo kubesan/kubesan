@@ -37,6 +37,12 @@ type NBDExportSpec struct {
 	// +kubebuilder:validation:Pattern="^[a-z0-9][-.a-z0-9]*$"
 	Host string `json:"host"`
 
+	// The size of the export. Write-once at creation.
+	// +kubebuilder:validation:XValidation:rule=oldSelf==self
+	// +kubebuilder:validation:Minimum=512
+	// +kubebuilder:validation:MultipleOf=512
+	SizeBytes int64 `json:"sizeBytes"`
+
 	// The set of clients connecting to the export.
 	// +optional
 	// +listType=set

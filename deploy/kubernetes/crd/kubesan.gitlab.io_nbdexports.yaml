@@ -94,9 +94,18 @@ spec:
                 type: string
                 x-kubernetes-validations:
                 - rule: oldSelf==self
+              sizeBytes:
+                description: The size of the export. Write-once at creation.
+                format: int64
+                minimum: 512
+                multipleOf: 512
+                type: integer
+                x-kubernetes-validations:
+                - rule: oldSelf==self
             required:
             - export
             - host
+            - sizeBytes
             type: object
             x-kubernetes-validations:
             - rule: has(self.path)?has(oldSelf.path):true

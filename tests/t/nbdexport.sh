@@ -20,6 +20,7 @@ spec:
   # do in a production environment.
   path: "/dev/kubesan-drive-1"
   host: $(__ksan-get-node-name 0)
+  sizeBytes: $((1024*1024))
 EOF
 
 # Wait for Status.Conditions["Available"]

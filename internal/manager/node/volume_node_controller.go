@@ -146,7 +146,7 @@ func (r *VolumeNodeReconciler) reconcileThinDetaching(ctx context.Context, volum
 
 // Handle any NBD client or server that needs to be cleaned up before
 // detaching or migrating a node activation.
-func (r *VolumeNodeReconciler) reconcileThinNBDCleanup(ctx context.Context, volume *v1alpha1.Volume) error {
+func (r *VolumeNodeReconciler) reconcileThinNBDCleanup(ctx context.Context, volume *v1alpha1.Volume, sizeBytes int64) error {
 	nbdExport := &v1alpha1.NBDExport{}
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
@@ -173,7 +173,7 @@ func (r *VolumeNodeReconciler) reconcileThinNBDCleanup(ctx context.Context, volu
 		}
 	}
 
-	if nbd.ShouldStopExport(nbdExport, volume.Spec.AttachToNodes) {
+	if nbd.ShouldStopExport(nbdExport, volume.Spec.AttachToNodes, sizeBytes) {
 		log.Info("Cleaning up NBD server", "export", volume.Status.NBDExport)
 		if nbdExport.Spec.Path != "" {
 			nbdExport.Spec.Path = ""
@@ -200,6 +200,7 @@ func (r *VolumeNodeReconciler) reconcileThinNBDCleanup(ctx context.Context, volu
 // Handle the creation of any NBD export
 func (r *VolumeNodeReconciler) reconcileThinNBDSetup(ctx context.Context, volume *v1alpha1.Volume, thinPoolLv *v1alpha1.ThinPoolLv) error {
 	thinLvName := thinpoollv.VolumeToThinLvName(volume.Name)
+	thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvName)
 	nodes := volume.Spec.AttachToNodes
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
@@ -222,9 +223,10 @@ func (r *VolumeNodeReconciler) reconcileThinNBDSetup(ctx context.Context, volume
 			Namespace: config.Namespace,
 		},
 		Spec: v1alpha1.NBDExportSpec{
-			Host:   config.LocalNodeName,
-			Export: volume.Name,
-			Path:   devName(volume),
+			Host:      config.LocalNodeName,
+			Export:    volume.Name,
+			Path:      devName(volume),
+			SizeBytes: thinLvStatus.SizeBytes,
 		},
 	}
 	controllerutil.AddFinalizer(export, config.Finalizer)
@@ -356,7 +358,12 @@ func (r *VolumeNodeReconciler) reconcileThin(ctx context.Context, volume *v1alph
 		return client.IgnoreNotFound(err)
 	}
 
-	if err = r.reconcileThinNBDCleanup(ctx, volume); err != nil {
+	thinLvName := thinpoollv.VolumeToThinLvName(volume.Name)
+	thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvName)
+	if thinLvStatus == nil {
+		return errors.NewBadRequest("unexpected missing blob")
+	}
+	if err = r.reconcileThinNBDCleanup(ctx, volume, thinLvStatus.SizeBytes); err != nil {
 		return err
 	}
 
