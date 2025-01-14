@@ -213,11 +213,12 @@ func getVolumeContents(req *csi.CreateVolumeRequest) (*v1alpha1.VolumeContents, 
 	volumeContents := &v1alpha1.VolumeContents{}
 
 	if req.VolumeContentSource == nil {
-		volumeContents.Empty = &v1alpha1.VolumeContentsEmpty{}
+		volumeContents.ContentsType = v1alpha1.VolumeContentsTypeEmpty
 	} else if source := req.VolumeContentSource.GetVolume(); source != nil {
 		if _, err := validate.ValidateVolumeID(source.VolumeId); err != nil {
 			return nil, err
 		}
+		volumeContents.ContentsType = v1alpha1.VolumeContentsTypeCloneVolume
 		volumeContents.CloneVolume = &v1alpha1.VolumeContentsCloneVolume{
 			SourceVolume: source.VolumeId,
 		}
@@ -225,6 +226,7 @@ func getVolumeContents(req *csi.CreateVolumeRequest) (*v1alpha1.VolumeContents, 
 		if _, err := validate.ValidateSnapshotID(source.SnapshotId); err != nil {
 			return nil, err
 		}
+		volumeContents.ContentsType = v1alpha1.VolumeContentsTypeCloneSnapshot
 		volumeContents.CloneSnapshot = &v1alpha1.VolumeContentsCloneSnapshot{
 			SourceSnapshot: source.SnapshotId,
 		}
@@ -404,9 +406,11 @@ func validateVolume(volume *v1alpha1.Volume, size int64, limit int64, source *v1
 	}
 	switch {
 	case source == &volume.Spec.Contents: // same pointer
-	case source.Empty != nil && volume.Spec.Contents.Empty != nil: // match
-	case source.CloneVolume != nil && volume.Spec.Contents.CloneVolume != nil && *source.CloneVolume == *volume.Spec.Contents.CloneVolume: // match
-	case source.CloneSnapshot != nil && volume.Spec.Contents.CloneSnapshot != nil && *source.CloneSnapshot == *volume.Spec.Contents.CloneSnapshot: // match
+	case source.ContentsType != volume.Spec.Contents.ContentsType:
+		return "incompatible source contents"
+	case source.ContentsType == v1alpha1.VolumeContentsTypeEmpty: // match
+	case source.ContentsType == v1alpha1.VolumeContentsTypeCloneVolume && source.CloneVolume != nil && volume.Spec.Contents.CloneVolume != nil && *source.CloneVolume == *volume.Spec.Contents.CloneVolume: // match
+	case source.ContentsType == v1alpha1.VolumeContentsTypeCloneSnapshot && source.CloneSnapshot != nil && volume.Spec.Contents.CloneSnapshot != nil && *source.CloneSnapshot == *volume.Spec.Contents.CloneSnapshot: // match
 	default:
 		return "incompatible source contents"
 	}

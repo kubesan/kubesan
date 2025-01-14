@@ -111,8 +111,14 @@ spec:
                     required:
                     - sourceVolume
                     type: object
-                  empty:
-                    type: object
+                  contentsType:
+                    enum:
+                    - Empty
+                    - CloneVolume
+                    - CloneSnapshot
+                    type: string
+                required:
+                - contentsType
                 type: object
                 x-kubernetes-validations:
                 - rule: oldSelf==self
