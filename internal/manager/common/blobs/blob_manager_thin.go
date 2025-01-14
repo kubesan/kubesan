@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package cluster
+package blobs
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	"slices"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
@@ -25,7 +27,6 @@ import (
 type ThinBlobManager struct {
 	client client.Client
 	scheme *runtime.Scheme
-	owner  metav1.Object
 	vgName string
 }
 
@@ -34,14 +35,10 @@ type ThinBlobManager struct {
 // Direct ReadWriteMany access is not supported and needs to be provided via
 // another means like NBD. Thin LVs are good for general use cases and virtual
 // machines.
-//
-// ThinBlobManager creates Kubernetes resources with a controller reference to
-// the owner object passed to this function.
-func NewThinBlobManager(client client.Client, scheme *runtime.Scheme, owner metav1.Object, vgName string) BlobManager {
+func NewThinBlobManager(client client.Client, scheme *runtime.Scheme, vgName string) BlobManager {
 	return &ThinBlobManager{
 		client: client,
 		scheme: scheme,
-		owner:  owner,
 		vgName: vgName,
 	}
 }
@@ -56,7 +53,7 @@ func (m *ThinBlobManager) getThinPoolLv(ctx context.Context, name string) (*v1al
 	return thinPoolLv, nil
 }
 
-func (m *ThinBlobManager) createThinPoolLv(ctx context.Context, name string, sizeBytes int64) (*v1alpha1.ThinPoolLv, error) {
+func (m *ThinBlobManager) createThinPoolLv(ctx context.Context, name string, sizeBytes int64, owner client.Object) (*v1alpha1.ThinPoolLv, error) {
 	// Give the pool 1% more space than the volume, to account for any metadata overhead
 	// TODO: this is wasteful for large sparse volumes once auto-extend is working. Find a better heuristic for this, maybe max(min(size, 1G),size/10)
 	paddedSize := sizeBytes + ((sizeBytes/100)+511)/512*512
@@ -72,7 +69,7 @@ func (m *ThinBlobManager) createThinPoolLv(ctx context.Context, name string, siz
 	}
 	controllerutil.AddFinalizer(thinPoolLv, config.Finalizer)
 
-	if err := controllerutil.SetControllerReference(m.owner, thinPoolLv, m.scheme); err != nil {
+	if err := controllerutil.SetOwnerReference(owner, thinPoolLv, m.scheme); err != nil {
 		return nil, err
 	}
 
@@ -86,13 +83,13 @@ func (m *ThinBlobManager) createThinPoolLv(ctx context.Context, name string, siz
 }
 
 // Add or update ThinLvSpec in ThinPoolLv.Spec.ThinLvs[]
-func (m *ThinBlobManager) createThinLv(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv, name string, sizeBytes int64) error {
+func (m *ThinBlobManager) createThinLv(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv, name string, sizeBytes int64, contents *v1alpha1.ThinLvContents) error {
+	readOnly := contents.ContentsType == v1alpha1.ThinLvContentsTypeSnapshot
+
 	thinlv := &v1alpha1.ThinLvSpec{
-		Name: name,
-		Contents: v1alpha1.ThinLvContents{
-			ContentsType: v1alpha1.ThinLvContentsTypeEmpty,
-		},
-		ReadOnly:  false, // TODO fill in?
+		Name:      name,
+		Contents:  *contents,
+		ReadOnly:  readOnly,
 		SizeBytes: sizeBytes,
 		State: v1alpha1.ThinLvSpecState{
 			Name: v1alpha1.ThinLvSpecStateNameInactive,
@@ -104,7 +101,7 @@ func (m *ThinBlobManager) createThinLv(ctx context.Context, thinPoolLv *v1alpha1
 	old := thinPoolLv.Spec.FindThinLv(name)
 	if old == nil {
 		thinPoolLv.Spec.ThinLvs = append(thinPoolLv.Spec.ThinLvs, *thinlv)
-	} else if *old == *thinlv {
+	} else if reflect.DeepEqual(old, thinlv) {
 		return nil // no change
 	} else {
 		*old = *thinlv
@@ -150,10 +147,10 @@ func (m *ThinBlobManager) forgetRemovedThinLv(ctx context.Context, thinPoolLv *v
 	return nil // not found, treat as already deleted
 }
 
-func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64) error {
+func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64, owner client.Object) error {
 	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
 
-	thinPoolLv, err := m.createThinPoolLv(ctx, name, sizeBytes)
+	thinPoolLv, err := m.createThinPoolLv(ctx, name, sizeBytes, owner)
 	if err != nil {
 		log.Error(err, "CreateBlob createThinPoolLv failed")
 		return err
@@ -161,7 +158,8 @@ func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes
 	oldThinPoolLv := thinPoolLv.DeepCopy()
 
 	thinLvName := thinpoollv.VolumeToThinLvName(name)
-	err = m.createThinLv(ctx, thinPoolLv, thinLvName, sizeBytes)
+	contents := &v1alpha1.ThinLvContents{ContentsType: v1alpha1.ThinLvContentsTypeEmpty}
+	err = m.createThinLv(ctx, thinPoolLv, thinLvName, sizeBytes, contents)
 	if err != nil {
 		log.Error(err, "CreateBlob createThinLv failed")
 		return err
@@ -187,15 +185,81 @@ func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes
 	return err
 }
 
-func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string) error {
+func (m *ThinBlobManager) GetSnapshotSize(ctx context.Context, name string, sourceName string) (int64, error) {
+	thinPoolLv, err := m.getThinPoolLv(ctx, sourceName)
+	if err != nil {
+		return 0, err
+	}
+
+	thinLvName := thinpoollv.VolumeToThinLvName(name)
+	thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvName)
+	if thinLvStatus == nil {
+		return 0, errors.NewBadRequest(fmt.Sprintf("thinLv \"%s\" not found", thinLvName))
+	}
+
+	return thinLvStatus.SizeBytes, nil
+}
+
+func (m *ThinBlobManager) SnapshotBlob(ctx context.Context, name string, sourceName string, owner client.Object) error {
 	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
 
-	thinPoolLv, err := m.getThinPoolLv(ctx, name)
+	log.Info("SnapshotBlob entered", "name", name)
+	defer log.Info("SnapshotBlob exited")
+
+	thinPoolLv, err := m.getThinPoolLv(ctx, sourceName)
+	if err != nil {
+		log.Error(err, "SnapshotBlob getThinPoolLv failed")
+		return err
+	}
+
+	oldThinPoolLv := thinPoolLv.DeepCopy()
+
+	sourceThinLv := thinPoolLv.Spec.FindThinLv(thinpoollv.VolumeToThinLvName(sourceName))
+	if sourceThinLv == nil {
+		log.Error(err, "SnapshotBlob sourceThinLv not found")
+		return errors.NewBadRequest("sourceThinLv not found")
+	}
+
+	if err = controllerutil.SetOwnerReference(owner, thinPoolLv, m.scheme, controllerutil.WithBlockOwnerDeletion(true)); err != nil {
+		return err
+	}
+
+	thinLvName := thinpoollv.VolumeToThinLvName(name)
+	contents := &v1alpha1.ThinLvContents{
+		ContentsType: v1alpha1.ThinLvContentsTypeSnapshot,
+		Snapshot: &v1alpha1.ThinLvContentsSnapshot{
+			SourceThinLvName: sourceThinLv.Name,
+		}}
+	err = m.createThinLv(ctx, thinPoolLv, thinLvName, sourceThinLv.SizeBytes, contents)
+	if err != nil {
+		log.Error(err, "SnapshotBlob createThinLv failed")
+		return err
+	}
+
+	if !m.checkThinLvExists(thinPoolLv, thinLvName, sourceThinLv.SizeBytes) {
+		return &util.WatchPending{}
+	}
+	// TODO propagate back errors
+
+	// update thinPoolLv to clear Spec.ActiveOnNode, if necessary
+
+	err = thinpoollv.UpdateThinPoolLv(ctx, m.client, oldThinPoolLv, thinPoolLv)
+	if err != nil {
+		log.Error(err, "CreateBlob UpdateThinPoolLv failed")
+		return err
+	}
+	return nil
+}
+
+func (m *ThinBlobManager) removeBlobOrSnapshot(ctx context.Context, name string, thinPoolLvName string) error {
+	log := log.FromContext(ctx).WithValues("blobName", name, "thinPoolLvName", thinPoolLvName, "nodeName", config.LocalNodeName)
+
+	thinPoolLv, err := m.getThinPoolLv(ctx, thinPoolLvName)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil
 		}
-		log.Error(err, "RemoveBlob getThinPoolLv failed")
+		log.Error(err, "RemoveBlobOrSnapshot getThinPoolLv failed")
 		return err
 	}
 
@@ -203,7 +267,7 @@ func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string) error {
 	thinLvName := thinpoollv.VolumeToThinLvName(name)
 	err = m.requestThinLvRemoval(ctx, oldThinPoolLv, thinPoolLv, thinLvName)
 	if err != nil {
-		log.Error(err, "RemoveBlob requestThinLvRemoval failed")
+		log.Error(err, "RemoveBlobOrSnapshot requestThinLvRemoval failed")
 		return err
 	}
 
@@ -213,41 +277,32 @@ func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string) error {
 
 	err = m.forgetRemovedThinLv(ctx, thinPoolLv, thinLvName)
 	if err != nil {
-		log.Error(err, "RemoveBlob forgetRemovedThinLv failed")
+		log.Error(err, "RemoveBlobOrSnapshot forgetRemovedThinLv failed")
 		return err
 	}
 	if thinPoolLv.Status.FindThinLv(thinLvName) != nil {
 		return &util.WatchPending{}
 	}
 
-	// orphan thinPoolLv since we don't need it anymore but snapshots may still need it
-	// TODO can this introduce leaks?
-
-	if controllerutil.HasControllerReference(thinPoolLv) {
-		err = controllerutil.RemoveControllerReference(m.owner, thinPoolLv, m.scheme)
-		if err != nil {
-			log.Error(err, "RemoveControllerReference failed")
-			return err
-		}
-	}
-
-	// update thinPoolLv to remove controller reference or clear Spec.ActiveOnNode, if necessary
+	// update thinPoolLv to clear Spec.ActiveOnNode, if necessary
 
 	err = thinpoollv.UpdateThinPoolLv(ctx, m.client, oldThinPoolLv, thinPoolLv)
 	if err != nil {
-		log.Error(err, "RemoveBlob UpdateThinPoolLv failed")
-		return err
-	}
-
-	// delete thinPoolLv without waiting, snapshots may still need it
-
-	propagation := client.PropagationPolicy(metav1.DeletePropagationForeground)
-
-	if err := m.client.Delete(ctx, thinPoolLv, propagation); err != nil && !errors.IsNotFound(err) {
+		log.Error(err, "RemoveBlobOrSnapshot UpdateThinPoolLv failed")
 		return err
 	}
 
 	return nil
+}
+
+func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string) error {
+	// ThinPoolLv.Name is identical to Volume.Name for blobs
+	return m.removeBlobOrSnapshot(ctx, name, name)
+}
+
+func (m *ThinBlobManager) RemoveSnapshot(ctx context.Context, name string, sourceName string) error {
+	// ThinPoolLv.Name is the source Volume.Name for snapshots
+	return m.removeBlobOrSnapshot(ctx, name, sourceName)
 }
 
 func (m *ThinBlobManager) GetPath(name string) string {

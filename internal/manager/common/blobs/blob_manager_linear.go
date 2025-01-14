@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
-package cluster
+package blobs
 
 import (
 	"context"
 	"fmt"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -16,7 +17,6 @@ import (
 // Per-reconcile invocation state
 type LinearBlobManager struct {
 	workers *workers.Workers
-	owner   client.Object
 	vgName  string
 }
 
@@ -25,10 +25,9 @@ type LinearBlobManager struct {
 // ReadWriteMany without NBD when used without LVM's COW snapshots. They are a
 // natural fit for use cases that require constant RWX and do not need
 // snapshots.
-func NewLinearBlobManager(workers *workers.Workers, owner client.Object, vgName string) BlobManager {
+func NewLinearBlobManager(workers *workers.Workers, vgName string) BlobManager {
 	return &LinearBlobManager{
 		workers: workers,
-		owner:   owner,
 		vgName:  vgName,
 	}
 }
@@ -55,7 +54,7 @@ func (m *LinearBlobManager) blkdiscardWorkName(name string) string {
 	return fmt.Sprintf("blkdiscard/%s/%s", m.vgName, name)
 }
 
-func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64) error {
+func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64, owner client.Object) error {
 	_, err := commands.LvmLvCreateIdempotent(
 		"--devicesfile", m.vgName,
 		"--activate", "n",
@@ -87,7 +86,7 @@ func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeByt
 			vgName: m.vgName,
 			lvName: name,
 		}
-		err := m.workers.Run(m.blkdiscardWorkName(name), m.owner, work)
+		err := m.workers.Run(m.blkdiscardWorkName(name), owner, work)
 		if err != nil {
 			return err
 		}
@@ -112,6 +111,21 @@ func (m *LinearBlobManager) RemoveBlob(ctx context.Context, name string) error {
 		fmt.Sprintf("%s/%s", m.vgName, name),
 	)
 	return err
+}
+
+func (m *LinearBlobManager) SnapshotBlob(ctx context.Context, name string, sourceName string, owner client.Object) error {
+	// Linear volumes do not support snapshots
+	return errors.NewBadRequest("linear volumes do not support snapshots")
+}
+
+func (m *LinearBlobManager) RemoveSnapshot(ctx context.Context, name string, sourceName string) error {
+	// Linear volumes do not support snapshots
+	return errors.NewBadRequest("linear volumes do not support snapshots")
+}
+
+func (m *LinearBlobManager) GetSnapshotSize(ctx context.Context, name string, sourceName string) (int64, error) {
+	// Linear volumes do not support snapshots
+	return 0, errors.NewBadRequest("linear volumes do not support snapshots")
 }
 
 func (m *LinearBlobManager) GetPath(name string) string {

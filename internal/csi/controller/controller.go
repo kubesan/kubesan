@@ -27,7 +27,7 @@ func (s *ControllerServer) ControllerGetCapabilities(ctx context.Context, req *c
 		csi.ControllerServiceCapability_RPC_CREATE_DELETE_VOLUME,
 		// TODO Enable these once snapshot and clone are implemented
 		//		csi.ControllerServiceCapability_RPC_CLONE_VOLUME,
-		//		csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
+		csi.ControllerServiceCapability_RPC_CREATE_DELETE_SNAPSHOT,
 		csi.ControllerServiceCapability_RPC_SINGLE_NODE_MULTI_WRITER,
 		csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 	}

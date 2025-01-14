@@ -18,7 +18,7 @@ import (
 // Returns the thin LV name given the volume's name. This is necessary because
 // thin-pool LV and thin LV names are in the same namespace and must be unique.
 func VolumeToThinLvName(volumeName string) string {
-	return volumeName + "-thin"
+	return "thin-" + volumeName
 }
 
 // Maps from ThinLvSpecState.Name to ThinLvStatusState.Name
@@ -76,6 +76,19 @@ func thinPoolLvNeedsActivation(thinPoolLv *v1alpha1.ThinPoolLv) bool {
 		// extending the thin LV requires that the ThinPoolLv be active on a node
 
 		if thinLvSpec.SizeBytes > thinLvStatus.SizeBytes {
+			return true
+		}
+	}
+
+	for i := range thinPoolLv.Status.ThinLvs {
+		thinLvStatus := &thinPoolLv.Status.ThinLvs[i]
+
+		// Spec.ThinLvs[] element has been removed but corresponding
+		// Status.ThinLvs[] hasn't been cleaned up by ThinPoolLv node
+		// controller yet
+
+		if thinLvStatus.State.Name == v1alpha1.ThinLvStatusStateNameRemoved &&
+			thinPoolLv.Spec.FindThinLv(thinLvStatus.Name) == nil {
 			return true
 		}
 	}

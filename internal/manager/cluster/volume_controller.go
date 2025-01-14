@@ -10,6 +10,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -17,6 +18,7 @@ import (
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
 	kubesanslices "gitlab.com/kubesan/kubesan/internal/common/slices"
+	"gitlab.com/kubesan/kubesan/internal/manager/common/blobs"
 	"gitlab.com/kubesan/kubesan/internal/manager/common/util"
 	"gitlab.com/kubesan/kubesan/internal/manager/common/workers"
 )
@@ -34,29 +36,29 @@ func SetUpVolumeReconciler(mgr ctrl.Manager) error {
 		workers: workers.NewWorkers(),
 	}
 
-	builder := ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Volume{}).
-		Owns(&v1alpha1.ThinPoolLv{}) // for ThinBlobManager
-	r.workers.SetUpReconciler(builder)
-	return builder.Complete(r)
+		Owns(&v1alpha1.ThinPoolLv{}, builder.MatchEveryOwner) // for ThinBlobManager
+	r.workers.SetUpReconciler(b)
+	return b.Complete(r)
 }
 
 // +kubebuilder:rbac:groups=kubesan.gitlab.io,resources=volumes,verbs=get;list;watch;create;update;patch;delete,namespace=kubesan-system
 // +kubebuilder:rbac:groups=kubesan.gitlab.io,resources=volumes/status,verbs=get;update;patch,namespace=kubesan-system
 // +kubebuilder:rbac:groups=kubesan.gitlab.io,resources=volumes/finalizers,verbs=update,namespace=kubesan-system
 
-func (r *VolumeReconciler) newBlobManager(volume *v1alpha1.Volume) (BlobManager, error) {
+func (r *VolumeReconciler) newBlobManager(volume *v1alpha1.Volume) (blobs.BlobManager, error) {
 	switch volume.Spec.Mode {
 	case v1alpha1.VolumeModeThin:
-		return NewThinBlobManager(r.Client, r.Scheme, volume, volume.Spec.VgName), nil
+		return blobs.NewThinBlobManager(r.Client, r.Scheme, volume.Spec.VgName), nil
 	case v1alpha1.VolumeModeLinear:
-		return NewLinearBlobManager(r.workers, volume, volume.Spec.VgName), nil
+		return blobs.NewLinearBlobManager(r.workers, volume.Spec.VgName), nil
 	default:
 		return nil, errors.NewBadRequest("invalid volume mode")
 	}
 }
 
-func (r *VolumeReconciler) reconcileDeleting(ctx context.Context, blobMgr BlobManager, volume *v1alpha1.Volume) error {
+func (r *VolumeReconciler) reconcileDeleting(ctx context.Context, blobMgr blobs.BlobManager, volume *v1alpha1.Volume) error {
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
 	if len(volume.Status.AttachedToNodes) > 0 {
@@ -82,7 +84,7 @@ func (r *VolumeReconciler) reconcileDeleting(ctx context.Context, blobMgr BlobMa
 	return nil
 }
 
-func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr BlobManager, volume *v1alpha1.Volume) error {
+func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blobs.BlobManager, volume *v1alpha1.Volume) error {
 	// add finalizer
 
 	if controllerutil.AddFinalizer(volume, config.Finalizer) {
@@ -96,7 +98,7 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr Blo
 	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable) {
 		log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
-		err := blobMgr.CreateBlob(ctx, volume.Name, volume.Spec.SizeBytes)
+		err := blobMgr.CreateBlob(ctx, volume.Name, volume.Spec.SizeBytes, volume)
 		if err != nil {
 			if _, ok := err.(*util.WatchPending); ok {
 				log.Info("CreateBlob waiting for Watch")

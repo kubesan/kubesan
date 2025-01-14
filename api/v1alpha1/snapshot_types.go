@@ -12,10 +12,6 @@ import (
 type SnapshotSpec struct {
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
-	VgName string `json:"vgName"`
-
-	// Should be set from creation and never updated.
-	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	SourceVolume string `json:"sourceVolume"`
 }
 
@@ -38,22 +34,15 @@ type SnapshotStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	// The size of the snapshot, immutable once set.
-	// +kubebuilder:validation:XValidation:rule=oldSelf==self
-	SizeBytes *int64 `json:"sizeBytes"`
-
-	// The file system type of the snapshot. `nil` if a snapshot of a block volume.
-	// +kubebuilder:validation:XValidation:rule=oldSelf==self
-	FsType *string `json:"fsType,omitempty"`
+	SizeBytes int64 `json:"sizeBytes"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:resource:scope=Namespaced,shortName=snap;snaps,categories=kubesan;lv
 // +kubebuilder:subresource:status
-// +kubebuilder:printcolumn:name="VG",type=string,JSONPath=`.spec.vgName`,description='VG owning the snapshot'
 // +kubebuilder:printcolumn:name="Source",type=string,JSONPath=`.spec.sourceVolume`,description='Volume that this snapshot was created on'
 // +kubebuilder:printcolumn:name="Available",type=date,JSONPath=`.status.conditions[?(@.type=="Available")].lastTransitionTime`,description='Time since snapshot was available'
 // +kubebuilder:printcolumn:name="Size",type=integer,JSONPath=`.status.sizeBytes`,description='Size of snapshot'
-// +kubebuilder:printcolumn:name="FSType",type=string,JSONPath=`.status.fsType`,description='filesystem type (blank if block)',priority=1
 
 type Snapshot struct {
 	metav1.TypeMeta   `json:",inline"`

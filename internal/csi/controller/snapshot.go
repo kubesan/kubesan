@@ -4,6 +4,9 @@ package controller
 
 import (
 	"context"
+	"log"
+	"math"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -12,6 +15,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -59,7 +64,7 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 
 	resp := &csi.CreateSnapshotResponse{
 		Snapshot: &csi.Snapshot{
-			SizeBytes:      *snapshot.Status.SizeBytes,
+			SizeBytes:      snapshot.Status.SizeBytes,
 			SnapshotId:     snapshot.Name,
 			SourceVolumeId: snapshot.Spec.SourceVolume,
 			CreationTime:   timestamppb.New(condition.LastTransitionTime.Time),
@@ -89,6 +94,31 @@ func (s *ControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSn
 	propagation := client.PropagationPolicy(metav1.DeletePropagationForeground)
 
 	if err := s.client.Delete(ctx, snapshot, propagation); err != nil && !errors.IsNotFound(err) {
+		return nil, err
+	}
+
+	// Delete() returns immediately so wait for the resource to go away
+
+	err := wait.Backoff{
+		Duration: 500 * time.Millisecond,
+		Factor:   2, // exponential backoff
+		Jitter:   0.1,
+		Steps:    math.MaxInt,
+		Cap:      10 * time.Second,
+	}.DelayFunc().Until(ctx, true, false, func(ctx context.Context) (bool, error) {
+		err := s.client.Get(ctx, types.NamespacedName{Name: req.SnapshotId, Namespace: config.Namespace}, snapshot)
+		if err == nil {
+			log.Printf("Snapshot \"%v\" still exists", req.SnapshotId)
+			return false, nil // keep going
+		} else if errors.IsNotFound(err) {
+			log.Printf("Snapshot \"%v\" deleted", req.SnapshotId)
+			return true, nil // done
+		} else {
+			log.Printf("Snapshot \"%v\" Get() failed: %+v", req.SnapshotId, err)
+			return false, err
+		}
+	})
+	if err != nil {
 		return nil, err
 	}
 
