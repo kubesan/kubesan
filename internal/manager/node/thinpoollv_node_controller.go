@@ -126,6 +126,7 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinPoolLvActivation(ctx context.Con
 				"lvchange",
 				"--devicesfile", thinPoolLv.Spec.VgName,
 				"--activate", "ey",
+				"--monitor", "y",
 				fmt.Sprintf("%s/%s", thinPoolLv.Spec.VgName, thinPoolLv.Name),
 			)
 			if err != nil {
