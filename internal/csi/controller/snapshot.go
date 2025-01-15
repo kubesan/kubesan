@@ -40,7 +40,7 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 
 	snapshot := &v1alpha1.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      req.Name,
+			Name:      validate.SafeName(req.Name, "snapshot"),
 			Namespace: config.Namespace,
 		},
 		Spec: v1alpha1.SnapshotSpec{

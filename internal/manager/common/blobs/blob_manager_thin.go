@@ -69,7 +69,7 @@ func (m *ThinBlobManager) createThinPoolLv(ctx context.Context, name string, siz
 	}
 	controllerutil.AddFinalizer(thinPoolLv, config.Finalizer)
 
-	if err := controllerutil.SetOwnerReference(owner, thinPoolLv, m.scheme); err != nil {
+	if err := controllerutil.SetOwnerReference(owner, thinPoolLv, m.scheme, controllerutil.WithBlockOwnerDeletion(true)); err != nil {
 		return nil, err
 	}
 

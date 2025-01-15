@@ -4,11 +4,8 @@ package controller
 
 import (
 	"context"
-	"encoding/hex"
-	"hash/fnv"
 	"log"
 	"math"
-	"regexp"
 	"slices"
 	"strconv"
 	"time"
@@ -40,19 +37,6 @@ const (
 	defaultExtentSize = 4 * 1024 * 1024
 )
 
-var (
-	pvcNamePattern = regexp.MustCompile(`^pvc-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
-)
-
-func safeName(name string) string {
-	if matches := pvcNamePattern.FindStringSubmatch(name); matches != nil {
-		return name
-	}
-	hash := fnv.New128a()
-	hash.Write([]byte(name))
-	return "kubesan-" + hex.EncodeToString(hash.Sum(nil))
-}
-
 func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
 	// pvName, err := getParameter("csi.storage.k8s.io/pv/name")
 	// if err != nil {
@@ -62,6 +46,10 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 	lvmVolumeGroup := req.Parameters["lvmVolumeGroup"]
 	if lvmVolumeGroup == "" {
 		return nil, status.Error(codes.InvalidArgument, "missing/empty parameter \"lvmVolumeGroup\"")
+	}
+
+	if req.Name == "" {
+		return nil, status.Error(codes.InvalidArgument, "must specify volume name")
 	}
 
 	volumeMode, err := getVolumeMode(req.Parameters)
@@ -104,7 +92,7 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 	// such names, we map those through a hash.
 	//
 	// See https://kubernetes.io/docs/concepts/overview/working-with-objects/names/
-	name := safeName(req.Name)
+	name := validate.SafeName(req.Name, "pvc")
 
 	volume := &v1alpha1.Volume{
 		ObjectMeta: metav1.ObjectMeta{

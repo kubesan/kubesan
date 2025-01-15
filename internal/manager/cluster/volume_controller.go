@@ -67,10 +67,13 @@ func (r *VolumeReconciler) reconcileDeleting(ctx context.Context, blobMgr blobs.
 	}
 
 	if err := blobMgr.RemoveBlob(ctx, volume.Name); err != nil {
-		if _, ok := err.(*util.WatchPending); ok {
-			log.Info("RemoveBlob waiting for Watch")
-			return nil // wait until Watch triggers
-		}
+		// During deletion, if there were multiple
+		// OwnerReferences, we have no guarantee when
+		// kubernetes will remove our reference.  But once our
+		// reference is gone, we no longer get reconcile
+		// events when the child changes state, so we must let
+		// WatchPending errors through to trigger exponential
+		// backoff so we can still poll the ThinPoolLv.
 		return err
 	}
 
@@ -98,12 +101,7 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable) {
 		log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
-		err := blobMgr.CreateBlob(ctx, volume.Name, volume.Spec.SizeBytes, volume)
-		if err != nil {
-			if _, ok := err.(*util.WatchPending); ok {
-				log.Info("CreateBlob waiting for Watch")
-				return nil // wait until Watch triggers
-			}
+		if err := blobMgr.CreateBlob(ctx, volume.Name, volume.Spec.SizeBytes, volume); err != nil {
 			return err
 		}
 
@@ -176,7 +174,12 @@ func (r *VolumeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, errors.NewBadRequest("cloning snapshots is not yet supported")
 	}
 
-	return ctrl.Result{}, r.reconcileNotDeleting(ctx, blobMgr, volume)
+	err = r.reconcileNotDeleting(ctx, blobMgr, volume)
+	if _, ok := err.(*util.WatchPending); ok {
+		log.Info("reconcile waiting for Watch")
+		err = nil // wait until Watch triggers
+	}
+	return ctrl.Result{}, err
 }
 
 func (r *VolumeReconciler) statusUpdate(ctx context.Context, volume *v1alpha1.Volume) error {

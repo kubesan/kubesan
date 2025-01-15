@@ -57,16 +57,19 @@ EOF
 
     ksan-wait-for-pvc-to-be-bound 60 "$name"
 }
+export -f ksan-create-volume
 
 # Usage: ksan-create-rwo-volume <name> <size>
 ksan-create-rwo-volume() {
     ksan-create-volume "$@" ReadWriteOnce
 }
+export -f ksan-create-rwo-volume
 
 # Usage: ksan-create-rwx-volume <name> <size>
 ksan-create-rwx-volume() {
     ksan-create-volume "$@" ReadWriteMany
 }
+export -f ksan-create-rwx-volume
 
 # Usage: ksan-create-fs-volume <name> <size>
 ksan-create-fs-volume() {
@@ -92,6 +95,7 @@ EOF
 
     ksan-wait-for-pvc-to-be-bound 60 "$name"
 }
+export -f ksan-create-fs-volume
 
 # Usage: ksan-fill-volume <name> <size_mb>
 ksan-fill-volume() {
@@ -125,6 +129,7 @@ EOF
     ksan-wait-for-pod-to-succeed 60 test-pod
     kubectl delete pod test-pod --timeout=60s
 }
+export -f ksan-fill-volume
 
 # Usage: ksan-create-snapshot <volume> <snapshot>
 ksan-create-snapshot() {
@@ -144,6 +149,7 @@ EOF
 
     ksan-wait-for-vs-to-be-bound 60 "$snapshot"
 }
+export -f ksan-create-snapshot
 
 # Usage: ksan-delete volume <volume> [<volume2> ...]
 ksan-delete-volume() {
@@ -156,6 +162,7 @@ ksan-delete-volume() {
     kubectl delete pvc "$@" --timeout=30s
     ksan-poll 1 30 "[[ -z \"\$(kubectl get --no-headers pv $pvs --ignore-not-found)\" ]]"
 }
+export -f ksan-delete-volume
 
 # Usage: ksan-get-condition <kind> <name> <condition>
 ksan-get-condition() {
@@ -165,3 +172,4 @@ ksan-get-condition() {
 
     kubectl get --namespace kubesan-system "${kind}" "${name}" --output jsonpath="{.status.conditions[?(.type==\"${condition}\")].status}"
 }
+export -f ksan-get-condition
