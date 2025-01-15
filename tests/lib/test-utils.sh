@@ -36,6 +36,8 @@ ksan-stage() {
 
 # Usage: ksan-create-volume <name> <size> <access>
 ksan-create-volume() {
+    [[ $# == 3 ]] || { echo "usage $0 name size access"; return 1; }
+
     name=$1
     size=$2
     access=$3
@@ -73,6 +75,8 @@ export -f ksan-create-rwx-volume
 
 # Usage: ksan-create-fs-volume <name> <size>
 ksan-create-fs-volume() {
+    [[ $# == 2 ]] || { echo "usage $0 name size"; return 1; }
+
     name=$1
     size=$2
 
@@ -99,6 +103,8 @@ export -f ksan-create-fs-volume
 
 # Usage: ksan-fill-volume <name> <size_mb>
 ksan-fill-volume() {
+    [[ $# == 2 ]] || { echo "usage $0 name size_mb"; return 1; }
+
     name=$1
     size_mb=$2
 
@@ -133,6 +139,8 @@ export -f ksan-fill-volume
 
 # Usage: ksan-create-snapshot <volume> <snapshot>
 ksan-create-snapshot() {
+    [[ $# == 2 ]] || { echo "usage $0 volume snapshot"; return 1; }
+
     volume=$1
     snapshot=$2
 
@@ -153,14 +161,18 @@ export -f ksan-create-snapshot
 
 # Usage: ksan-delete-snapshot <snapshot>
 ksan-delete-snapshot() {
+    [[ $# != 1 ]] || { echo "usage $0 snapshot"; return 1; }
     snapshot=$1
 
     ksan-stage "Deleting snapshot \"$snapshot\"..."
     kubectl delete --cascade=foreground --timeout=60s volumesnapshot "$snapshot"
 }
+export -f ksan-delete-snapshot
 
 # Usage: ksan-delete volume <volume> [<volume2> ...]
 ksan-delete-volume() {
+    [[ $# > 0 ]] || { echo "usage $0 volume..."; return 1; }
+
     ksan-stage "Deleting volumes..."
 
     # PVCs deletion is immediate but PVs only disappear after CSI DeleteVolume
