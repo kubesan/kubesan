@@ -4,6 +4,9 @@
 package validate
 
 import (
+	"encoding/hex"
+	"hash/fnv"
+	"regexp"
 	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -15,6 +18,20 @@ import (
 
 	"gitlab.com/kubesan/kubesan/internal/common/config"
 )
+
+var (
+	safeNamePattern = regexp.MustCompile(`^([a-z]*)-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$`)
+)
+
+func SafeName(name string, prefix string) string {
+	matches := safeNamePattern.FindStringSubmatch(name)
+	if len(matches) == 2 && matches[1] == prefix {
+		return name
+	}
+	hash := fnv.New128a()
+	hash.Write([]byte(name))
+	return "kubesan-" + prefix + "-" + hex.EncodeToString(hash.Sum(nil))
+}
 
 // Validate a VolumeID or SnapshotID. As a convenience, provide a
 // NamespacedName on success, since most callers will eventually want
