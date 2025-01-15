@@ -9,9 +9,7 @@ ksan-fill-volume test-pvc-1 64
 ksan-stage 'Creating snapshot 1...'
 ksan-create-snapshot test-pvc-1 test-vs-1
 
-ksan-stage 'Deleting snapshot of volume 1...'
-
-kubectl delete vs test-vs-1 --timeout=60s
+ksan-delete-snapshot test-vs-1
 
 ksan-stage 'Recreating snapshot 1...'
 ksan-create-snapshot test-pvc-1 test-vs-1
@@ -131,8 +129,5 @@ EOF
 ksan-wait-for-pod-to-succeed 60 test-pod
 kubectl delete pod test-pod --timeout=60s
 
-ksan-stage 'Deleting snapshot of volume 1...'
-
-kubectl delete vs test-vs-1 --timeout=60s
-
+ksan-delete-snapshot test-vs-1
 ksan-delete-volume test-pvc-2 test-pvc-3
