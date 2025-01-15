@@ -128,7 +128,7 @@ func (r *SnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		err = r.reconcileNotDeleting(ctx, blobMgr, snapshot)
 	}
 
-	if _, ok := err.(*util.WatchPending); ok {
+	if _, ok := err.(*util.WatchPending); ok && snapshot.DeletionTimestamp == nil {
 		log.Info("SnapshotReconciler waiting for Watch")
 		err = nil
 	}

@@ -67,10 +67,13 @@ func (r *VolumeReconciler) reconcileDeleting(ctx context.Context, blobMgr blobs.
 	}
 
 	if err := blobMgr.RemoveBlob(ctx, volume.Name); err != nil {
-		if _, ok := err.(*util.WatchPending); ok {
-			log.Info("RemoveBlob waiting for Watch")
-			return nil // wait until Watch triggers
-		}
+		// During deletion, if there were multiple
+		// OwnerReferences, we have no guarantee when
+		// kubernetes will remove our reference.  But once our
+		// reference is gone, we no longer get reconcile
+		// events when the child changes state, so we must let
+		// WatchPending errors through to trigger exponential
+		// backoff so we can still poll the ThinPoolLv.
 		return err
 	}
 
