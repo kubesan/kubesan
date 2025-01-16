@@ -110,7 +110,14 @@ Next, create a devices file with the same name as the LVM Volume Group on
 every node in the cluster:
 
 ```console
-$ sudo lvmdevices --devicesfile my-vg --adddev /dev/my-san-lun
+# hide devices from LVM when invoked without --devicesfile my-vg
+$ sudo touch /etc/lvm/devices/system.devices
+
+# create a devices file for my-vg
+$ sudo vgimportdevices my-vg --devicesfile my-vg
+
+# add devices so dmeventd sees them for automatic extension of thin-pools
+$ sudo vgimportdevices my-vg --devicesfile dmeventd.devices
 
 # check if sanlock and lvmlockd are configured correctly
 $ sudo vgchange --devicesfile my-vg --lock-start
