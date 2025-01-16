@@ -515,7 +515,7 @@ func (s *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumes
 		entry := csi.ListVolumesResponse_Entry{
 			Volume: &csi.Volume{
 				CapacityBytes: volume.Status.SizeBytes,
-				VolumeId:      volume.Spec.VgName,
+				VolumeId:      volume.Name,
 			},
 			Status: &csi.ListVolumesResponse_VolumeStatus{
 				VolumeCondition: &csi.VolumeCondition{
