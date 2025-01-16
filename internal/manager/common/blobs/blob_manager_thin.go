@@ -54,17 +54,15 @@ func (m *ThinBlobManager) getThinPoolLv(ctx context.Context, name string) (*v1al
 }
 
 func (m *ThinBlobManager) createThinPoolLv(ctx context.Context, name string, sizeBytes int64, owner client.Object) (*v1alpha1.ThinPoolLv, error) {
-	// Give the pool 1% more space than the volume, to account for any metadata overhead
-	// TODO: this is wasteful for large sparse volumes once auto-extend is working. Find a better heuristic for this, maybe max(min(size, 1G),size/10)
-	paddedSize := sizeBytes + ((sizeBytes/100)+511)/512*512
 	thinPoolLv := &v1alpha1.ThinPoolLv{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: config.Namespace,
 		},
 		Spec: v1alpha1.ThinPoolLvSpec{
-			VgName:    m.vgName,
-			SizeBytes: paddedSize,
+			VgName: m.vgName,
+			// Let the thin-pool grow after the first gigabyte
+			SizeBytes: min(sizeBytes, 1024*1024*1024),
 		},
 	}
 	controllerutil.AddFinalizer(thinPoolLv, config.Finalizer)

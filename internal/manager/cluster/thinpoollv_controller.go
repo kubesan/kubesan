@@ -129,7 +129,7 @@ func (r *ThinPoolLvReconciler) createThinPoolLv(ctx context.Context, thinPoolLv 
 		"--devicesfile", thinPoolLv.Spec.VgName,
 		"--activate", "n",
 		"--type", "thin-pool",
-		"--metadataprofile", "kubesan",
+		"--metadataprofile", config.LvmProfileName,
 		"--name", thinPoolLv.Name,
 		"--size", fmt.Sprintf("%db", thinPoolLv.Spec.SizeBytes),
 		thinPoolLv.Spec.VgName,

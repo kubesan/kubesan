@@ -151,6 +151,14 @@ EOF
 }
 export -f ksan-create-snapshot
 
+# Usage: ksan-delete-snapshot <snapshot>
+ksan-delete-snapshot() {
+    snapshot=$1
+
+    ksan-stage "Deleting snapshot \"$snapshot\"..."
+    kubectl delete --cascade=foreground --timeout=60s volumesnapshot "$snapshot"
+}
+
 # Usage: ksan-delete volume <volume> [<volume2> ...]
 ksan-delete-volume() {
     ksan-stage "Deleting volumes..."

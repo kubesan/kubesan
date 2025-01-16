@@ -5,27 +5,23 @@
 # consumption occurs when a snapshot is created and the volume is subsequently
 # completely overwritten.
 
-ksan-supported-modes # TODO enable Thin when snapshots are implemented
+ksan-supported-modes Thin
 
 ksan-stage "Creating volume..."
-ksan-create-rwo-volume test-pvc-1 64Mi
+ksan-create-rwo-volume test-pvc-1 512Mi
 
-ksan-fill-volume test-pvc-1 64
+ksan-fill-volume test-pvc-1 512
 
 ksan-stage "Creating snapshot 1..."
 ksan-create-snapshot test-pvc-1 test-vs-1
 
-ksan-fill-volume test-pvc-1 64
+ksan-fill-volume test-pvc-1 512
 
 ksan-stage "Creating snapshot 2..."
 ksan-create-snapshot test-pvc-1 test-vs-2
 
-ksan-fill-volume test-pvc-1 64
+ksan-fill-volume test-pvc-1 512
 
-ksan-delete volume test-pvc-1
-
-ksan-stage 'Deleting first snapshot of volume 1...'
-kubectl delete vs test-vs-1 --timeout=60s
-
-ksan-stage 'Deleting second snapshot of volume 1...'
-kubectl delete vs test-vs-2 --timeout=60s
+ksan-delete-volume test-pvc-1
+ksan-delete-snapshot test-vs-1
+ksan-delete-snapshot test-vs-2
