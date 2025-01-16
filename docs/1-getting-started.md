@@ -92,7 +92,7 @@ the LUN, although you may find it easiest to do it on the control-plane
 node; here is how to create a VG named `my-vg`:
 
 ```console
-$ sudo vgcreate --shared my-vg /dev/my-san-lun
+$ sudo vgcreate --devicesfile my-vg --shared my-vg /dev/my-san-lun
 ```
 
 KubeSAN assumes that it will be the sole owner of the shared volume group; you
