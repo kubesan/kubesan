@@ -56,16 +56,17 @@ func (r *VolumeNodeReconciler) reconcileThinAttaching(ctx context.Context, volum
 	oldThinPoolLv := thinPoolLv.DeepCopy()
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
-	if err := dm.Create(ctx, volume.Name, volume.Spec.SizeBytes); err != nil {
-		return err
-	}
-
 	thinLvName := thinpoollv.VolumeToThinLvName(volume.Name)
 	thinLvSpec := thinPoolLv.Spec.FindThinLv(thinLvName)
-	if thinLvSpec == nil || thinLvSpec.State.Name == v1alpha1.ThinLvSpecStateNameRemoved {
+	thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvName)
+	if thinLvSpec == nil || thinLvStatus == nil || thinLvSpec.State.Name == v1alpha1.ThinLvSpecStateNameRemoved {
 		return errors.NewBadRequest("unexpected missing blob")
 	} else {
 		thinLvSpec.State.Name = v1alpha1.ThinLvSpecStateNameActive
+	}
+
+	if err := dm.Create(ctx, volume.Name, thinLvStatus.SizeBytes); err != nil {
+		return err
 	}
 
 	// Update the ThinPool activation claims.
@@ -102,7 +103,7 @@ func (r *VolumeNodeReconciler) reconcileThinAttaching(ctx context.Context, volum
 		}
 	}
 	log.Info("Device ready to attach", "device", device)
-	return dm.Resume(ctx, volume.Name, volume.Spec.SizeBytes, device)
+	return dm.Resume(ctx, volume.Name, thinLvStatus.SizeBytes, device)
 }
 
 // Ensure that the volume is detached from this node.

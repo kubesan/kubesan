@@ -118,8 +118,9 @@ func (m *LinearBlobManager) SnapshotBlob(ctx context.Context, name string, sourc
 	return errors.NewBadRequest("linear volumes do not support snapshots")
 }
 
+// Return the actual size of the blob.
 func (m *LinearBlobManager) GetSize(ctx context.Context, name string) (int64, error) {
-	return 0, errors.NewBadRequest("not implemented yet")
+	return commands.LvmSize(m.vgName, name)
 }
 
 func (m *LinearBlobManager) GetPath(name string) string {
