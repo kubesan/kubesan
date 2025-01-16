@@ -540,3 +540,43 @@ func (s *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumes
 		NextToken: nextToken,
 	}, nil
 }
+
+func (s *ControllerServer) ControllerGetVolume(ctx context.Context, req *csi.ControllerGetVolumeRequest) (*csi.ControllerGetVolumeResponse, error) {
+
+	// input validation
+	namespacedName, err := validate.ValidateVolumeID(req.VolumeId)
+	if err != nil {
+		return nil, err
+	}
+
+	// retrieve the volume
+	volume := &v1alpha1.Volume{}
+	if err := s.client.Get(ctx, namespacedName, volume); err != nil {
+		if errors.IsNotFound(err) {
+			return nil, status.Error(codes.NotFound, req.VolumeId+" does not exist")
+		}
+		return nil, err
+	}
+
+	abnormal := false
+	message := "Volume is operational"
+	cond := meta.FindStatusCondition(volume.Status.Conditions, v1alpha1.VolumeConditionAbnormal)
+	if cond != nil && cond.Status == metav1.ConditionTrue {
+		abnormal = true
+		message = cond.Message
+	}
+
+	return &csi.ControllerGetVolumeResponse{
+		Volume: &csi.Volume{
+			CapacityBytes: volume.Status.SizeBytes,
+			VolumeId:      volume.Name,
+		},
+		Status: &csi.ControllerGetVolumeResponse_VolumeStatus{
+			VolumeCondition: &csi.VolumeCondition{
+				Abnormal: abnormal,
+				Message:  message,
+			},
+			PublishedNodeIds: volume.Status.AttachedToNodes,
+		},
+	}, nil
+}
