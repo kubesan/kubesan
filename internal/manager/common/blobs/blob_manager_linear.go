@@ -118,11 +118,6 @@ func (m *LinearBlobManager) SnapshotBlob(ctx context.Context, name string, sourc
 	return errors.NewBadRequest("linear volumes do not support snapshots")
 }
 
-func (m *LinearBlobManager) RemoveSnapshot(ctx context.Context, name string, sourceName string) error {
-	// Linear volumes do not support snapshots
-	return errors.NewBadRequest("linear volumes do not support snapshots")
-}
-
 func (m *LinearBlobManager) GetSnapshotSize(ctx context.Context, name string, sourceName string) (int64, error) {
 	// Linear volumes do not support snapshots
 	return 0, errors.NewBadRequest("linear volumes do not support snapshots")

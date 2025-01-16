@@ -50,7 +50,7 @@ func SetUpVolumeReconciler(mgr ctrl.Manager) error {
 func (r *VolumeReconciler) newBlobManager(volume *v1alpha1.Volume) (blobs.BlobManager, error) {
 	switch volume.Spec.Mode {
 	case v1alpha1.VolumeModeThin:
-		return blobs.NewThinBlobManager(r.Client, r.Scheme, volume.Spec.VgName), nil
+		return blobs.NewThinBlobManager(r.Client, r.Scheme, volume.Spec.VgName, volume.Name), nil
 	case v1alpha1.VolumeModeLinear:
 		return blobs.NewLinearBlobManager(r.workers, volume.Spec.VgName), nil
 	default:
