@@ -15,7 +15,7 @@ type BlobManager interface {
 	// exist yet.
 	//
 	// If the blob already exists but the size does not match then it will
-	// be recreated with the desired size.
+	// be expanded to the desired size.
 	//
 	// An owner reference may be added from the given owner to a dependent
 	// resource associated with the new blob.
@@ -26,21 +26,14 @@ type BlobManager interface {
 	RemoveBlob(ctx context.Context, name string) error
 
 	// SnapshotBlob creates a snapshot with a given name from an existing
-	// source blob.
+	// source blob.  If snapshots are not supported, this will fail.
 	//
 	// An owner reference may be added from the given owner to a dependent
 	// resource associated with the snapshot.
 	SnapshotBlob(ctx context.Context, name string, sourceName string, owner client.Object) error
 
-	// RemoveSnapshot removes a snapshot if it exists. No error is returned
-	// if the snapshot does not exist. In addition to the name of the
-	// snapshot, the name of the source blob which was passed to
-	// SnapshotBlob must also be given.
-	RemoveSnapshot(ctx context.Context, name string, sourceName string) error
-
-	// Returns the size in bytes of the snapshot with the given name and
-	// name of the source blob which was passed to SnapshotBlob.
-	GetSnapshotSize(ctx context.Context, name string, sourceName string) (int64, error)
+	// Returns the (logical) size in bytes of the blob.
+	GetSize(ctx context.Context, name string) (int64, error)
 
 	// GetPath returns the matching device name that should exist on
 	// any node where the blob is staged.

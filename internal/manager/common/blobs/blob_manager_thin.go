@@ -25,9 +25,10 @@ import (
 )
 
 type ThinBlobManager struct {
-	client client.Client
-	scheme *runtime.Scheme
-	vgName string
+	client   client.Client
+	scheme   *runtime.Scheme
+	vgName   string
+	poolName string
 }
 
 // NewThinBlobManager returns a BlobManager implemented using LVM's thin
@@ -35,11 +36,16 @@ type ThinBlobManager struct {
 // Direct ReadWriteMany access is not supported and needs to be provided via
 // another means like NBD. Thin LVs are good for general use cases and virtual
 // machines.
-func NewThinBlobManager(client client.Client, scheme *runtime.Scheme, vgName string) BlobManager {
+//
+// vgName may be empty if the manager will only be used for SnapshotBlob
+// rather than CreateBlob (since the source of a snapshot already determines
+// the VG that the thin pool lives in).
+func NewThinBlobManager(client client.Client, scheme *runtime.Scheme, vgName string, poolName string) BlobManager {
 	return &ThinBlobManager{
-		client: client,
-		scheme: scheme,
-		vgName: vgName,
+		client:   client,
+		scheme:   scheme,
+		vgName:   vgName,
+		poolName: poolName,
 	}
 }
 
@@ -183,8 +189,12 @@ func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes
 	return err
 }
 
-func (m *ThinBlobManager) GetSnapshotSize(ctx context.Context, name string, sourceName string) (int64, error) {
-	thinPoolLv, err := m.getThinPoolLv(ctx, sourceName)
+// This returns the offline size. A staged volume may still see a smaller
+// size until its device-mapper wrapper is resized.
+func (m *ThinBlobManager) GetSize(ctx context.Context, name string) (int64, error) {
+	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
+
+	thinPoolLv, err := m.getThinPoolLv(ctx, m.poolName)
 	if err != nil {
 		return 0, err
 	}
@@ -195,11 +205,16 @@ func (m *ThinBlobManager) GetSnapshotSize(ctx context.Context, name string, sour
 		return 0, errors.NewBadRequest(fmt.Sprintf("thinLv \"%s\" not found", thinLvName))
 	}
 
+	log.Info("GetSize complete", "size", thinLvStatus.SizeBytes)
 	return thinLvStatus.SizeBytes, nil
 }
 
 func (m *ThinBlobManager) SnapshotBlob(ctx context.Context, name string, sourceName string, owner client.Object) error {
 	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
+
+	if sourceName != m.poolName {
+		return errors.NewBadRequest("source name must match blob manager pool name")
+	}
 
 	log.Info("SnapshotBlob entered", "name", name)
 	defer log.Info("SnapshotBlob exited")
@@ -249,15 +264,15 @@ func (m *ThinBlobManager) SnapshotBlob(ctx context.Context, name string, sourceN
 	return nil
 }
 
-func (m *ThinBlobManager) removeBlobOrSnapshot(ctx context.Context, name string, thinPoolLvName string) error {
-	log := log.FromContext(ctx).WithValues("blobName", name, "thinPoolLvName", thinPoolLvName, "nodeName", config.LocalNodeName)
+func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string) error {
+	log := log.FromContext(ctx).WithValues("blobName", name, "thinPoolLvName", m.poolName, "nodeName", config.LocalNodeName)
 
-	thinPoolLv, err := m.getThinPoolLv(ctx, thinPoolLvName)
+	thinPoolLv, err := m.getThinPoolLv(ctx, m.poolName)
 	if err != nil {
 		if errors.IsNotFound(err) {
 			return nil
 		}
-		log.Error(err, "RemoveBlobOrSnapshot getThinPoolLv failed")
+		log.Error(err, "RemoveBlob getThinPoolLv failed")
 		return err
 	}
 
@@ -265,7 +280,7 @@ func (m *ThinBlobManager) removeBlobOrSnapshot(ctx context.Context, name string,
 	thinLvName := thinpoollv.VolumeToThinLvName(name)
 	err = m.requestThinLvRemoval(ctx, oldThinPoolLv, thinPoolLv, thinLvName)
 	if err != nil {
-		log.Error(err, "RemoveBlobOrSnapshot requestThinLvRemoval failed")
+		log.Error(err, "RemoveBlob requestThinLvRemoval failed")
 		return err
 	}
 
@@ -275,7 +290,7 @@ func (m *ThinBlobManager) removeBlobOrSnapshot(ctx context.Context, name string,
 
 	err = m.forgetRemovedThinLv(ctx, thinPoolLv, thinLvName)
 	if err != nil {
-		log.Error(err, "RemoveBlobOrSnapshot forgetRemovedThinLv failed")
+		log.Error(err, "RemoveBlob forgetRemovedThinLv failed")
 		return err
 	}
 	if thinPoolLv.Status.FindThinLv(thinLvName) != nil {
@@ -286,21 +301,11 @@ func (m *ThinBlobManager) removeBlobOrSnapshot(ctx context.Context, name string,
 
 	err = thinpoollv.UpdateThinPoolLv(ctx, m.client, oldThinPoolLv, thinPoolLv)
 	if err != nil {
-		log.Error(err, "RemoveBlobOrSnapshot UpdateThinPoolLv failed")
+		log.Error(err, "RemoveBlob UpdateThinPoolLv failed")
 		return err
 	}
 
 	return nil
-}
-
-func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string) error {
-	// ThinPoolLv.Name is identical to Volume.Name for blobs
-	return m.removeBlobOrSnapshot(ctx, name, name)
-}
-
-func (m *ThinBlobManager) RemoveSnapshot(ctx context.Context, name string, sourceName string) error {
-	// ThinPoolLv.Name is the source Volume.Name for snapshots
-	return m.removeBlobOrSnapshot(ctx, name, sourceName)
 }
 
 func (m *ThinBlobManager) GetPath(name string) string {

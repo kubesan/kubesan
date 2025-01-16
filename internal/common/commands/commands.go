@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 
 	k8serror "k8s.io/apimachinery/pkg/api/errors"
@@ -214,6 +215,23 @@ func LvmLvAddTag(vgName string, lvName string, tag string) error {
 		fmt.Sprintf("%s/%s", vgName, lvName),
 	)
 	return err
+}
+
+// Return the current size of the LV.
+func LvmSize(vgName string, lvName string) (int64, error) {
+	output, err := Lvm(
+		"lvs",
+		"--devicesfile", vgName,
+		"--options", "lv_size",
+		"--units", "b",
+		"--no-headings",
+		"--no-suffix",
+		vgName+"/"+lvName,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseInt(strings.TrimSpace(string(output.Combined)), 10, 64)
 }
 
 // Calls a function with an LV activated temporarily

@@ -50,7 +50,7 @@ func SetUpVolumeReconciler(mgr ctrl.Manager) error {
 func (r *VolumeReconciler) newBlobManager(volume *v1alpha1.Volume) (blobs.BlobManager, error) {
 	switch volume.Spec.Mode {
 	case v1alpha1.VolumeModeThin:
-		return blobs.NewThinBlobManager(r.Client, r.Scheme, volume.Spec.VgName), nil
+		return blobs.NewThinBlobManager(r.Client, r.Scheme, volume.Spec.VgName, volume.Name), nil
 	case v1alpha1.VolumeModeLinear:
 		return blobs.NewLinearBlobManager(r.workers, volume.Spec.VgName), nil
 	default:
@@ -88,6 +88,9 @@ func (r *VolumeReconciler) reconcileDeleting(ctx context.Context, blobMgr blobs.
 }
 
 func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blobs.BlobManager, volume *v1alpha1.Volume) error {
+	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
+	needsUpdate := false
+
 	// add finalizer
 
 	if controllerutil.AddFinalizer(volume, config.Finalizer) {
@@ -99,8 +102,6 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 	// create LVM LV if necessary
 
 	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable) {
-		log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
-
 		if err := blobMgr.CreateBlob(ctx, volume.Name, volume.Spec.SizeBytes, volume); err != nil {
 			return err
 		}
@@ -115,10 +116,20 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 		}
 		meta.SetStatusCondition(&volume.Status.Conditions, condition)
 
-		volume.Status.SizeBytes = volume.Spec.SizeBytes // TODO report actual size?
-
 		volume.Status.Path = blobMgr.GetPath(volume.Name)
+		needsUpdate = true
+	}
 
+	sizeBytes, err := blobMgr.GetSize(ctx, volume.Name)
+	if err != nil {
+		return err
+	}
+	if sizeBytes > volume.Status.SizeBytes {
+		needsUpdate = true
+		volume.Status.SizeBytes = sizeBytes
+	}
+
+	if needsUpdate {
 		if err := r.statusUpdate(ctx, volume); err != nil {
 			return err
 		}

@@ -237,7 +237,6 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinLvDeletion(ctx context.Context, 
 				State: v1alpha1.ThinLvStatusState{
 					Name: v1alpha1.ThinLvStatusStateNameRemoved,
 				},
-				SizeBytes: thinLvSpec.SizeBytes,
 			}
 
 			thinPoolLv.Status.ThinLvs = append(thinPoolLv.Status.ThinLvs, thinLvStatus)
@@ -428,12 +427,17 @@ func (r *ThinPoolLvNodeReconciler) createThinLv(ctx context.Context, thinPoolLv 
 		return nil
 	}
 
+	size, err := commands.LvmSize(thinPoolLv.Spec.VgName, thinLvSpec.Name)
+	if err != nil {
+		return err
+	}
+
 	thinLvStatus := v1alpha1.ThinLvStatus{
 		Name: thinLvSpec.Name,
 		State: v1alpha1.ThinLvStatusState{
 			Name: v1alpha1.ThinLvStatusStateNameInactive,
 		},
-		SizeBytes: thinLvSpec.SizeBytes,
+		SizeBytes: size,
 	}
 
 	thinPoolLv.Status.ThinLvs = append(thinPoolLv.Status.ThinLvs, thinLvStatus)

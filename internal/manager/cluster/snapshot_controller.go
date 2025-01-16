@@ -43,11 +43,11 @@ func SetUpSnapshotReconciler(mgr ctrl.Manager) error {
 func (r *SnapshotReconciler) reconcileDeleting(ctx context.Context, blobMgr blobs.BlobManager, snapshot *v1alpha1.Snapshot) error {
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
-	if err := blobMgr.RemoveSnapshot(ctx, snapshot.Name, snapshot.Spec.SourceVolume); err != nil {
+	if err := blobMgr.RemoveBlob(ctx, snapshot.Name); err != nil {
 		return err
 	}
 
-	log.Info("RemoveSnapshot succeeded")
+	log.Info("RemoveBlob succeeded")
 
 	if controllerutil.RemoveFinalizer(snapshot, config.Finalizer) {
 		if err := r.Update(ctx, snapshot); err != nil {
@@ -86,7 +86,7 @@ func (r *SnapshotReconciler) reconcileNotDeleting(ctx context.Context, blobMgr b
 		}
 		meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
 
-		sizeBytes, err := blobMgr.GetSnapshotSize(ctx, snapshot.Name, snapshot.Spec.SourceVolume)
+		sizeBytes, err := blobMgr.GetSize(ctx, snapshot.Name)
 		if err != nil {
 			return err
 		}
@@ -118,8 +118,7 @@ func (r *SnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// snapshot creation/deletion, so an empty string can be passed here.
 	vgName := ""
 
-	// TODO Return an error if the volume is Linear rather than Thin.
-	blobMgr := blobs.NewThinBlobManager(r.Client, r.Scheme, vgName)
+	blobMgr := blobs.NewThinBlobManager(r.Client, r.Scheme, vgName, snapshot.Spec.SourceVolume)
 
 	var err error
 	if snapshot.DeletionTimestamp != nil {
