@@ -28,12 +28,36 @@ import (
 func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSnapshotRequest) (*csi.CreateSnapshotResponse, error) {
 	// validate request
 
-	if _, err := validate.ValidateVolumeID(req.SourceVolumeId); err != nil {
+	namespacedName, err := validate.ValidateVolumeID(req.SourceVolumeId)
+	if err != nil {
+		return nil, err
+	}
+	volume := &v1alpha1.Volume{}
+	err = s.client.Get(ctx, namespacedName, volume)
+	if errors.IsNotFound(err) {
+		return nil, status.Error(codes.NotFound, "volume not found")
+	}
+	if err != nil {
 		return nil, err
 	}
 
-	if req.Name == "" {
+	switch {
+	case volume.Spec.Mode != v1alpha1.VolumeModeThin:
+		return nil, status.Error(codes.Unimplemented, "snapshots are only supported on thin volumes")
+
+	case volume.Spec.Type.Filesystem != nil:
+		return nil, status.Error(codes.Unimplemented, "filesystem snapshots not implemented yet")
+
+	case req.Name == "":
 		return nil, status.Error(codes.InvalidArgument, "must specify snapshot name")
+
+	// At present, we don't use secrets, so this should be empty.
+	case len(req.Secrets) > 0:
+		return nil, status.Error(codes.InvalidArgument, "unexpected secrets")
+
+	// At present, we don't support any parameters, so this should be empty.
+	case len(req.Parameters) > 0:
+		return nil, status.Error(codes.InvalidArgument, "unexpected parameters")
 	}
 
 	// create snapshot
@@ -49,11 +73,20 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 	}
 	controllerutil.AddFinalizer(snapshot, config.Finalizer)
 
-	if err := s.client.Create(ctx, snapshot); err != nil && !errors.IsAlreadyExists(err) {
+	err = s.client.Create(ctx, snapshot)
+	if errors.IsAlreadyExists(err) {
+		// Check that the new request is idempotent to the existing snapshot
+		err = s.client.Get(ctx, types.NamespacedName{Name: snapshot.Name, Namespace: config.Namespace}, snapshot)
+		if err == nil && req.SourceVolumeId != snapshot.Spec.SourceVolume {
+			err = status.Error(codes.AlreadyExists, "snapshot already exists with different source")
+
+		}
+	}
+	if err != nil {
 		return nil, err
 	}
 
-	err := s.client.WatchSnapshotUntil(ctx, snapshot, func() bool {
+	err = s.client.WatchSnapshotUntil(ctx, snapshot, func() bool {
 		return meta.IsStatusConditionTrue(snapshot.Status.Conditions, v1alpha1.SnapshotConditionAvailable)
 	})
 	if err != nil {

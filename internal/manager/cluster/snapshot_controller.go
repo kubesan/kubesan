@@ -118,7 +118,6 @@ func (r *SnapshotReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	// snapshot creation/deletion, so an empty string can be passed here.
 	vgName := ""
 
-	// TODO Return an error if the volume is Linear rather than Thin.
 	blobMgr := blobs.NewThinBlobManager(r.Client, r.Scheme, vgName, snapshot.Spec.SourceVolume)
 
 	var err error
