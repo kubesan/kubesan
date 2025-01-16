@@ -115,8 +115,11 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 		}
 		meta.SetStatusCondition(&volume.Status.Conditions, condition)
 
-		volume.Status.SizeBytes = volume.Spec.SizeBytes // TODO report actual size?
-
+		sizeBytes, err := blobMgr.GetSize(ctx, volume.Name)
+		if err != nil {
+			return err
+		}
+		volume.Status.SizeBytes = sizeBytes
 		volume.Status.Path = blobMgr.GetPath(volume.Name)
 
 		if err := r.statusUpdate(ctx, volume); err != nil {

@@ -189,8 +189,12 @@ func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes
 	return err
 }
 
-func (m *ThinBlobManager) GetSnapshotSize(ctx context.Context, name string, sourceName string) (int64, error) {
-	thinPoolLv, err := m.getThinPoolLv(ctx, sourceName)
+// This returns the offline size. A staged volume may still see a smaller
+// size until its device-mapper wrapper is resized.
+func (m *ThinBlobManager) GetSize(ctx context.Context, name string) (int64, error) {
+	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
+
+	thinPoolLv, err := m.getThinPoolLv(ctx, m.poolName)
 	if err != nil {
 		return 0, err
 	}
@@ -201,6 +205,7 @@ func (m *ThinBlobManager) GetSnapshotSize(ctx context.Context, name string, sour
 		return 0, errors.NewBadRequest(fmt.Sprintf("thinLv \"%s\" not found", thinLvName))
 	}
 
+	log.Info("GetSize complete", "size", thinLvStatus.SizeBytes)
 	return thinLvStatus.SizeBytes, nil
 }
 

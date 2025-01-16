@@ -32,9 +32,8 @@ type BlobManager interface {
 	// resource associated with the snapshot.
 	SnapshotBlob(ctx context.Context, name string, sourceName string, owner client.Object) error
 
-	// Returns the size in bytes of the snapshot with the given name and
-	// name of the source blob which was passed to SnapshotBlob.
-	GetSnapshotSize(ctx context.Context, name string, sourceName string) (int64, error)
+	// Returns the (logical) size in bytes of the blob.
+	GetSize(ctx context.Context, name string) (int64, error)
 
 	// GetPath returns the matching device name that should exist on
 	// any node where the blob is staged.

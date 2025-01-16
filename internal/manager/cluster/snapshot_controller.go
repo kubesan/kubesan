@@ -86,7 +86,7 @@ func (r *SnapshotReconciler) reconcileNotDeleting(ctx context.Context, blobMgr b
 		}
 		meta.SetStatusCondition(&snapshot.Status.Conditions, condition)
 
-		sizeBytes, err := blobMgr.GetSnapshotSize(ctx, snapshot.Name, snapshot.Spec.SourceVolume)
+		sizeBytes, err := blobMgr.GetSize(ctx, snapshot.Name)
 		if err != nil {
 			return err
 		}
