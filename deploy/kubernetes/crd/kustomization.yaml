@@ -3,7 +3,6 @@
 resources:
 - kubesan.gitlab.io_nbdexports.yaml
 - kubesan.gitlab.io_snapshots.yaml
-- kubesan.gitlab.io_thinblobs.yaml
 - kubesan.gitlab.io_thinpoollvs.yaml
 - kubesan.gitlab.io_volumes.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
