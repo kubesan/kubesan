@@ -114,6 +114,7 @@ __start_kcli_cluster() {
     local created=0
     local controllers=1
     local workers=1
+    local extregparam=""
 
     if ! __kcli_cluster_exists "$1"; then
         if ! __kcli list images -o name |grep -q "/fedora40$"; then
@@ -126,12 +127,18 @@ __start_kcli_cluster() {
         workers=$(( num_nodes - controllers ))
         __log_cyan "kcli will deploy $controllers control-plane node(s) and $workers worker(s)"
 
+        if [[ -n "$extregistry" ]]; then
+             __log_cyan "Deployment will use registry: $extregistry"
+             extregparam="--param disconnected_url=$extregistry"
+        fi
+
         __kcli create cluster generic \
                 --threaded \
                 --param image=fedora40 \
                 --param ctlplanes=$controllers \
                 --param workers=$workers \
                 --param domain='' \
+                $extregparam \
                 --param registry=true \
                 --param cmds=['yum -y install podman lvm2-lockd sanlock && systemctl enable --now podman lvmlockd sanlock'] \
                 "$1"
