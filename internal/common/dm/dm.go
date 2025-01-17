@@ -40,7 +40,7 @@ func Create(ctx context.Context, name string, sizeBytes int64) error {
 
 	// Use of --notable instead of zeroTable() is not portable to older
 	// versions of device-mapper.
-	_, err := commands.DmsetupCreateIdempotent(lowerName(name), "--table", zeroTable(sizeBytes), "--addnodeoncreate")
+	_, err := commands.DmsetupCreateIdempotent("--uuid", lowerName(name), "--table", zeroTable(sizeBytes), "--addnodeoncreate", lowerName(name))
 	if err != nil {
 		log.Error(err, "dm lower create failed")
 		return err
@@ -50,7 +50,7 @@ func Create(ctx context.Context, name string, sizeBytes int64) error {
 	// not hang, at which point not even --addnodeoncreate will create
 	// a /dev/mapper entry without a separate mknodes call.  Thankfully,
 	// our use of the device does not depend on udev.
-	_, err = commands.DmsetupCreateIdempotent(upperName(name), "--table", upperTable(sizeBytes, name), "--noudevsync")
+	_, err = commands.DmsetupCreateIdempotent("--uuid", upperName(name), "--table", upperTable(sizeBytes, name), "--noudevsync", upperName(name))
 	if err != nil {
 		log.Error(err, "dm upper create failed")
 		_, _ = commands.DmsetupRemoveIdempotent(lowerName(name))
@@ -180,11 +180,11 @@ func GetDevicePath(name string) string {
 }
 
 func lowerName(name string) string {
-	return name + "-dm-lower"
+	return "kubesan-lower-" + name
 }
 
 func upperName(name string) string {
-	return name + "-dm-upper"
+	return "kubesan-upper-" + name
 }
 
 func zeroTable(sizeBytes int64) string {
