@@ -15,27 +15,30 @@ import (
 
 // This package provides the code for idempotent manipulation of
 // device mapper wrappers for thin volumes using dmsetup in the host
-// namespace.  Note that we need two devices per Volume.  This is
-// because "dmsetup suspend/dmsetup resume" is the only way to
-// live-swap which underlying block device is dereferenced, however,
-// any userspace application doing IO to a dm device that is suspended
-// will block in D state until the resume.  Meanwhile, the only device
-// mapper object that can queue I/O without blocking the userspace
-// client is multipath (even if we are only using a single path),
-// using "dmsetup message" to fail or reinstate the underlying path as
-// a faster way than waiting for the underlying storage to block.
-// Since we don't want userspace to block the upper layer has to be a
-// dm-multipath device that never suspends, but that means it can
-// never hot-swap the underlying device, so we also need a lower layer
-// dm-linear object that can hot-swap between direct LV access or
-// /dev/nbdX NBD client access.
+// namespace.  Note that "dmsetup suspend/dmsetup resume" is the only
+// way to live-swap which underlying block device is dereferenced,
+// however, a live-swap does not close the old fd until a resume.
+// During migration, we have to have the LV fd closed before we can
+// deactivate the LV, and we don't have the new NBD fd to open until
+// another node has activated the LV, so we have to resume on
+// something else, such as the zero or error table.  But exposing the
+// zero or error table to the end user would break their I/O.
+//
+// The solution is to use two linear devices per Volume.  On a suspend
+// request, the upper layer starts a long-running suspend, then the
+// lower layer can do a suspend and resume into the zero device;
+// because the upper layer is still suspended, no I/O will actually go
+// to the zero device, and we are guaranteed the old fd saw all I/O
+// from the upper layer before it closed.  Then on a resume request,
+// the lower layer does another suspend and resume into the correct
+// device, all before the upper layer finally resumes.
 
 // Create the wrappers in the filesystem so that the device can be opened;
 // however, I/O to the device is not possible until Resume() is used.
 func Create(ctx context.Context, name string, sizeBytes int64) error {
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
-	// Use of --notable instead of zeroTable() is not portable to all
+	// Use of --notable instead of zeroTable() is not portable to older
 	// versions of device-mapper.
 	_, err := commands.DmsetupCreateIdempotent(lowerName(name), "--table", zeroTable(sizeBytes), "--addnodeoncreate")
 	if err != nil {
@@ -82,12 +85,18 @@ func Suspend(ctx context.Context, name string, skipSync bool) error {
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
 	if exists, err := commands.PathExistsOnHost(GetDevicePath(name)); err == nil && exists {
-		_, err := commands.Dmsetup("message", upperName(name), "0", "fail_path /dev/mapper/"+lowerName(name))
+		// The upper device is not hot-swapping, so no need to
+		// force it to fully flush.
+		_, err := commands.DmsetupSuspendIdempotent(upperName(name), "--noflush", "--nolockfs")
 		if err != nil {
 			log.Error(err, "dm upper suspend failed")
 			return err
 		}
 
+		// The lower layer absolutely must flush (all I/O from
+		// before the upper layer suspended must reach the
+		// LV).  However, dmsetup should not try to do
+		// filesystem magic if this is a block volume.
 		args := []string{lowerName(name)}
 		if skipSync {
 			args = append(args, "--nolockfs")
@@ -95,6 +104,22 @@ func Suspend(ctx context.Context, name string, skipSync bool) error {
 		_, err = commands.DmsetupSuspendIdempotent(args...)
 		if err != nil {
 			log.Error(err, "dm lower suspend failed")
+			return err
+		}
+
+		// Resume the lower layer on a new table, so that the
+		// old device is released.  The smaller size doesn't
+		// matter, since there will be no I/O anyways.
+		_, err = commands.Dmsetup("load", lowerName(name), "--table", zeroTable(512))
+		if err != nil {
+			log.Error(err, "dm lower load failed")
+			return err
+		}
+
+		// We already flushed, so another flush is pointless.
+		_, err = commands.Dmsetup("resume", "--noflush", "--nolockfs", lowerName(name))
+		if err != nil {
+			log.Error(err, "dm lower resume failed")
 			return err
 		}
 	}
@@ -106,19 +131,22 @@ func Suspend(ctx context.Context, name string, skipSync bool) error {
 func Resume(ctx context.Context, name string, sizeBytes int64, devPath string) error {
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
+	// No need to flush - the old table should have had no I/O
+	// because the upper layer is still suspended.
 	_, err := commands.Dmsetup("load", lowerName(name), "--table", lowerTable(sizeBytes, devPath))
 	if err != nil {
 		log.Error(err, "dm lower load failed")
 		return err
 	}
 
-	_, err = commands.Dmsetup("resume", lowerName(name))
+	_, err = commands.Dmsetup("resume", "--noflush", "--nolockfs", lowerName(name))
 	if err != nil {
 		log.Error(err, "dm lower resume failed")
 		return err
 	}
 
-	_, err = commands.Dmsetup("message", upperName(name), "0", "reinstate_path /dev/mapper/"+lowerName(name))
+	// No need to flush - the upper layer is not getting a new table.
+	_, err = commands.Dmsetup("resume", "--noflush", "--nolockfs", upperName(name))
 	if err != nil {
 		log.Error(err, "dm upper resume failed")
 		return err
@@ -152,11 +180,11 @@ func GetDevicePath(name string) string {
 }
 
 func lowerName(name string) string {
-	return name + "-dm-linear"
+	return name + "-dm-lower"
 }
 
 func upperName(name string) string {
-	return name + "-dm-multi"
+	return name + "-dm-upper"
 }
 
 func zeroTable(sizeBytes int64) string {
@@ -168,5 +196,5 @@ func lowerTable(sizeBytes int64, device string) string {
 }
 
 func upperTable(sizeBytes int64, name string) string {
-	return fmt.Sprintf("0 %d multipath 3 queue_if_no_path queue_mode bio 0 1 1 round-robin 0 1 0 /dev/mapper/%s", sizeBytes/512, lowerName(name))
+	return fmt.Sprintf("0 %d linear /dev/mapper/%s 0", sizeBytes/512, lowerName(name))
 }
