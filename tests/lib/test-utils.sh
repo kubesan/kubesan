@@ -36,7 +36,7 @@ ksan-stage() {
 
 # Usage: ksan-create-volume <name> <size> <access>
 ksan-create-volume() {
-    [[ $# == 3 ]] || { echo "usage $0 name size access"; return 1; }
+    [[ $# == 3 ]] || { echo "usage: $FUNCNAME name size access"; return 1; }
 
     name=$1
     size=$2
@@ -63,19 +63,21 @@ export -f ksan-create-volume
 
 # Usage: ksan-create-rwo-volume <name> <size>
 ksan-create-rwo-volume() {
+    [[ $# == 2 ]] || { echo "usage: $FUNCNAME name size"; return 1; }
     ksan-create-volume "$@" ReadWriteOnce
 }
 export -f ksan-create-rwo-volume
 
 # Usage: ksan-create-rwx-volume <name> <size>
 ksan-create-rwx-volume() {
+    [[ $# == 2 ]] || { echo "usage: $FUNCNAME name size"; return 1; }
     ksan-create-volume "$@" ReadWriteMany
 }
 export -f ksan-create-rwx-volume
 
 # Usage: ksan-create-fs-volume <name> <size>
 ksan-create-fs-volume() {
-    [[ $# == 2 ]] || { echo "usage $0 name size"; return 1; }
+    [[ $# == 2 ]] || { echo "usage: $FUNCNAME name size"; return 1; }
 
     name=$1
     size=$2
@@ -103,7 +105,7 @@ export -f ksan-create-fs-volume
 
 # Usage: ksan-fill-volume <name> <size_mb>
 ksan-fill-volume() {
-    [[ $# == 2 ]] || { echo "usage $0 name size_mb"; return 1; }
+    [[ $# == 2 ]] || { echo "usage: $FUNCNAME name size_mb"; return 1; }
 
     name=$1
     size_mb=$2
@@ -139,7 +141,7 @@ export -f ksan-fill-volume
 
 # Usage: ksan-create-snapshot <volume> <snapshot>
 ksan-create-snapshot() {
-    [[ $# == 2 ]] || { echo "usage $0 volume snapshot"; return 1; }
+    [[ $# == 2 ]] || { echo "usage: $FUNCNAME volume snapshot"; return 1; }
 
     volume=$1
     snapshot=$2
@@ -161,7 +163,7 @@ export -f ksan-create-snapshot
 
 # Usage: ksan-delete-snapshot <snapshot>
 ksan-delete-snapshot() {
-    [[ $# != 1 ]] || { echo "usage $0 snapshot"; return 1; }
+    [[ $# == 1 ]] || { echo "usage: $FUNCNAME snapshot"; return 1; }
     snapshot=$1
 
     ksan-stage "Deleting snapshot \"$snapshot\"..."
@@ -171,7 +173,7 @@ export -f ksan-delete-snapshot
 
 # Usage: ksan-delete volume <volume> [<volume2> ...]
 ksan-delete-volume() {
-    [[ $# > 0 ]] || { echo "usage $0 volume..."; return 1; }
+    [[ $# > 0 ]] || { echo "usage: $FUNCNAME volume..."; return 1; }
 
     ksan-stage "Deleting volumes..."
 

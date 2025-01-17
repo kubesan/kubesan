@@ -140,6 +140,19 @@ $ sudo vgchange --devicesfile my-vg --lock-start
 
 ## Installing KubeSAN
 
+**CAUTION: While KubeSAN is in alpha (ie. a version string
+  v0._minor_._patch_), there will be breaking changes between minor
+  releases.  There are no guarantees that any PVCs or VolumeSnapshots
+  you create under one minor version will still work if you upgrade a
+  KubeSAN deployment in-place to another minor version.  The only safe
+  approach to using a new minor version is to completely uninstall the
+  old KubeSAN version, then create a fresh volume group before
+  installing the new version.** However, patch-level releases (if any
+  are made) should be safe to use with an in-place upgrade.  We do
+  have plans in place to ensure that once KubeSAN v1.0.0 is released,
+  all future updates will maintain the typical cross-version
+  compatibility matrix recommended by Kubernetes.
+
 If you are using OpenShift:
 
 ```console
