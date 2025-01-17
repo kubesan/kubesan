@@ -18,9 +18,10 @@ __create_ksan_shared_vg() {
     #   devices file that KubeSAN's LVM commands use.
     for node in "${NODES[@]}"; do
         __${deploy_tool}_ssh "${node}" "
+        sudo mkdir -p /etc/lvm/devices
         sudo touch /etc/lvm/devices/system.devices
-        sudo vgimportdevices "$1" --devicesfile "$1"
-        sudo vgimportdevices "$1" --devicesfile dmeventd.devices
+        sudo vgimportdevices --lock-opt skipgl "$1" --devicesfile "$1"
+        sudo vgimportdevices --lock-opt skipgl "$1" --devicesfile dmeventd.devices
         sudo vgchange --devicesfile "$1" --lockstart "$1"
         "
     done
