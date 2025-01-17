@@ -38,10 +38,22 @@ const (
 )
 
 func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
+	// Note that passing --extra-create-metadata in
+	// controller-plugin.yaml would give us access to the
+	// PersistentVolumeClaim object, but our current design does
+	// not need it.
+	// See https://gitlab.com/kubesan/kubesan/-/issues/105.
 	// pvName, err := getParameter("csi.storage.k8s.io/pv/name")
 	// if err != nil {
 	// 	return nil, err
 	// }
+
+	// The easiest way to reject unknown parameters is to see if a
+	// copy of only known parameters is the same length.
+	knownParameters := copyKnownParameters(req.Parameters)
+	if len(req.Parameters) > len(knownParameters) {
+		return nil, status.Error(codes.InvalidArgument, "unexpected parameters")
+	}
 
 	lvmVolumeGroup := req.Parameters["lvmVolumeGroup"]
 	if lvmVolumeGroup == "" {

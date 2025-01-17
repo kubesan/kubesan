@@ -55,7 +55,11 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 	case len(req.Secrets) > 0:
 		return nil, status.Error(codes.InvalidArgument, "unexpected secrets")
 
-	// At present, we don't support any parameters, so this should be empty.
+	// At present, we don't support any parameters, so this should
+	// be empty.  Note that passing --extra-create-metadata in
+	// controller-plugin.yaml would change this situation, but our
+	// current design does not need to get the VolumeSnapshot object.
+	// See https://gitlab.com/kubesan/kubesan/-/issues/105.
 	case len(req.Parameters) > 0:
 		return nil, status.Error(codes.InvalidArgument, "unexpected parameters")
 	}

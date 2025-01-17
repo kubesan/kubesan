@@ -71,7 +71,8 @@ spec:
         - name: csi-provisioner
           image: registry.k8s.io/sig-storage/csi-provisioner:v3.5.0
           args:
-            - --extra-create-metadata  # to get PVC/PV info in CreateVolume()
+            # See https://gitlab.com/kubesan/kubesan/-/issues/105:
+            # - --extra-create-metadata  # to get PVC/PV info in CreateVolume()
             - --default-fstype=ext4 # default FSType so that SecurityContext fsGroup works
           volumeMounts:
             - name: socket-dir
@@ -88,7 +89,8 @@ spec:
         - name: csi-snapshotter
           image: registry.k8s.io/sig-storage/csi-snapshotter:v6.3.3
           args:
-            - --extra-create-metadata  # to get VS/VSC info in CreateSnapshot()
+            # See https://gitlab.com/kubesan/kubesan/-/issues/105:
+            # - --extra-create-metadata  # to get VS/VSC info in CreateSnapshot()
           volumeMounts:
             - name: socket-dir
               mountPath: /run/csi
