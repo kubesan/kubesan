@@ -19,6 +19,7 @@ initial_working_dir="${PWD}"
 
 deploy_tool=kcli
 ksanregistry=""
+extregistry=""
 fail_fast=0
 mode=Thin
 num_nodes=2
@@ -67,6 +68,10 @@ while (( $# > 0 )); do
         --refresh-cache)
             refresh_cache=1
             use_cache=1
+            ;;
+        --external-registry)
+            shift
+            extregistry=$1
             ;;
         *)
             tests_arg+=( "$1" )
@@ -121,6 +126,7 @@ Options:
    --use <x>               Backend provider for k8s/openshift deployment (kcli|minikube|..., default: kcli).
    --use-cache             Use local cache when available (only supported for kcli).
    --refresh-cache         Refresh/create local cache when running tests directly (only supported for kcli).
+   --external-registry     Use a dedicated registry to deploy kcli clusters (only supported for kcli).
 
 NOTE: not all options are supported for kcli or minikube.
 
