@@ -92,7 +92,7 @@ the LUN, although you may find it easiest to do it on the control-plane
 node; here is how to create a VG named `my-vg`:
 
 ```console
-$ sudo vgcreate --shared my-vg /dev/my-san-lun
+$ sudo vgcreate --devicesfile my-vg --shared my-vg /dev/my-san-lun
 ```
 
 KubeSAN assumes that it will be the sole owner of the shared volume group; you
@@ -110,7 +110,14 @@ Next, create a devices file with the same name as the LVM Volume Group on
 every node in the cluster:
 
 ```console
-$ sudo lvmdevices --devicesfile my-vg --adddev /dev/my-san-lun
+# hide devices from LVM when invoked without --devicesfile my-vg
+$ sudo touch /etc/lvm/devices/system.devices
+
+# create a devices file for my-vg
+$ sudo vgimportdevices my-vg --devicesfile my-vg
+
+# add devices so dmeventd sees them for automatic extension of thin-pools
+$ sudo vgimportdevices my-vg --devicesfile dmeventd.devices
 
 # check if sanlock and lvmlockd are configured correctly
 $ sudo vgchange --devicesfile my-vg --lock-start
