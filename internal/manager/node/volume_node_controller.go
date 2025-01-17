@@ -248,25 +248,34 @@ func isThinLvActiveOnLocalNode(thinPoolLv *v1alpha1.ThinPoolLv, name string) boo
 }
 
 // Update Volume.Status.AttachedToNodes[] from the ThinPoolLv.
-func (r *VolumeNodeReconciler) updateStatusAttachedToNodes(ctx context.Context, volume *v1alpha1.Volume, attached bool) error {
+func (r *VolumeNodeReconciler) updateStatusAttachedToNodes(ctx context.Context, volume *v1alpha1.Volume, attached bool, thinPoolLv *v1alpha1.ThinPoolLv) error {
+	needsUpdate := false
 	if attached {
 		if !slices.Contains(volume.Status.AttachedToNodes, config.LocalNodeName) {
 			volume.Status.AttachedToNodes = append(volume.Status.AttachedToNodes, config.LocalNodeName)
+			needsUpdate = true
 
-			if err := r.statusUpdate(ctx, volume); err != nil {
-				return err
+		}
+		thinLvName := thinpoollv.VolumeToThinLvName(volume.Name)
+		if isThinLvActiveOnLocalNode(thinPoolLv, thinLvName) {
+			thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvName)
+			if thinLvStatus.SizeBytes > volume.Status.SizeBytes {
+				volume.Status.SizeBytes = thinLvStatus.SizeBytes
+				needsUpdate = true
 			}
 		}
 	} else {
 		if slices.Contains(volume.Status.AttachedToNodes, config.LocalNodeName) {
 			volume.Status.AttachedToNodes = kubesanslices.RemoveAll(volume.Status.AttachedToNodes, config.LocalNodeName)
-
-			if err := r.statusUpdate(ctx, volume); err != nil {
-				return err
-			}
+			needsUpdate = true
 		}
 	}
 
+	if needsUpdate {
+		if err := r.statusUpdate(ctx, volume); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -380,7 +389,7 @@ func (r *VolumeNodeReconciler) reconcileThin(ctx context.Context, volume *v1alph
 		return err
 	}
 
-	if err := r.updateStatusAttachedToNodes(ctx, volume, attached); err != nil {
+	if err := r.updateStatusAttachedToNodes(ctx, volume, attached, thinPoolLv); err != nil {
 		return err
 	}
 
