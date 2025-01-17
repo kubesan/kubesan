@@ -162,3 +162,13 @@ func (m *LinearBlobManager) GetSize(ctx context.Context, name string) (int64, er
 func (m *LinearBlobManager) GetPath(name string) string {
 	return fmt.Sprintf("/dev/%s/%s", m.vgName, name)
 }
+
+// Linear blobs must be expanded offline.
+func (m *LinearBlobManager) ExpansionMustBeOffline() bool {
+	return true
+}
+
+// Since expansion was offline, only the cluster controller can update size.
+func (m *LinearBlobManager) SizeNeedsCheck(staged bool) bool {
+	return true
+}

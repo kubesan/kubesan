@@ -457,3 +457,14 @@ func (m *ThinBlobManager) DeactivateBlobForCloneTarget(ctx context.Context, name
 func (m *ThinBlobManager) GetPath(name string) string {
 	return dm.GetDevicePath(name)
 }
+
+// Thin blobs can be expanded online.
+func (m *ThinBlobManager) ExpansionMustBeOffline() bool {
+	return false
+}
+
+// If the blob is staged, the active node controller will update size.  The
+// cluster controller only needs to step in when the blob is offline.
+func (m *ThinBlobManager) SizeNeedsCheck(staged bool) bool {
+	return !staged
+}

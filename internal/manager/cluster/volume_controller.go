@@ -207,6 +207,8 @@ func (r *VolumeReconciler) reconcileDeleting(ctx context.Context, blobMgr blobs.
 func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blobs.BlobManager, volume *v1alpha1.Volume) error {
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 	needsUpdate := false
+	needsResize := volume.Status.SizeBytes > 0 && volume.Spec.SizeBytes > volume.Status.SizeBytes
+	online := len(volume.Spec.AttachToNodes)+len(volume.Status.AttachedToNodes) > 0
 
 	// add finalizer
 
@@ -216,9 +218,45 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 		}
 	}
 
-	// create LVM LV if necessary
+	// Prepare for a resize, if needed.
 
-	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionLvCreated) {
+	if needsResize {
+		if volume.Spec.Type.Filesystem != nil {
+			condition := metav1.Condition{
+				Type:    v1alpha1.VolumeConditionAbnormal,
+				Status:  metav1.ConditionTrue,
+				Reason:  "ResizeUnsupported",
+				Message: "filesystem resize not implemented yet",
+			}
+			if meta.SetStatusCondition(&volume.Status.Conditions, condition) {
+				needsUpdate = true
+			}
+		} else {
+			log.Info("resize needed")
+			if blobMgr.ExpansionMustBeOffline() {
+				if online {
+					return util.NewWatchPending("waiting for volume to be offline")
+				}
+				condition := metav1.Condition{
+					Type:    v1alpha1.VolumeConditionAvailable,
+					Status:  metav1.ConditionFalse,
+					Reason:  "Resizing",
+					Message: "volume is unavailable while resizing",
+				}
+				// This update must happen now, rather than
+				// deferred to the end of reconcile.
+				if meta.SetStatusCondition(&volume.Status.Conditions, condition) {
+					if err := r.statusUpdate(ctx, volume); err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+
+	// create or expand LVM LV if necessary
+
+	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionLvCreated) || needsResize {
 		if err := blobMgr.CreateBlob(ctx, volume.Name, volume.Spec.SizeBytes, volume); err != nil {
 			return err
 		}
@@ -237,7 +275,9 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 			Reason:  "Created",
 			Message: "lvm logical volume created",
 		}
-		meta.SetStatusCondition(&volume.Status.Conditions, condition)
+		if meta.SetStatusCondition(&volume.Status.Conditions, condition) {
+			needsUpdate = true
+		}
 
 		// Shortcut when data population is not required
 		if volume.Spec.Contents.ContentsType == v1alpha1.VolumeContentsTypeEmpty {
@@ -247,11 +287,12 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 				Reason:  "Completed",
 				Message: "population from data source completed",
 			}
-			meta.SetStatusCondition(&volume.Status.Conditions, condition)
+			if meta.SetStatusCondition(&volume.Status.Conditions, condition) {
+				needsUpdate = true
+			}
 		}
 
 		volume.Status.Path = blobMgr.GetPath(volume.Name)
-		needsUpdate = true
 	}
 
 	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable) &&
@@ -271,13 +312,15 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 		needsUpdate = true
 	}
 
-	sizeBytes, err := blobMgr.GetSize(ctx, volume.Name)
-	if err != nil {
-		return err
-	}
-	if sizeBytes > volume.Status.SizeBytes {
-		needsUpdate = true
-		volume.Status.SizeBytes = sizeBytes
+	if blobMgr.SizeNeedsCheck(online) {
+		sizeBytes, err := blobMgr.GetSize(ctx, volume.Name)
+		if err != nil {
+			return err
+		}
+		if sizeBytes > volume.Status.SizeBytes {
+			needsUpdate = true
+			volume.Status.SizeBytes = sizeBytes
+		}
 	}
 
 	if needsUpdate {

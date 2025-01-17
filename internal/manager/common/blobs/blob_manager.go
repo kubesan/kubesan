@@ -59,4 +59,11 @@ type BlobManager interface {
 	// GetPath returns the matching device name that should exist on
 	// any node where the blob is staged.
 	GetPath(name string) string
+
+	// Return true if expansion requires the blob to be offline first.
+	ExpansionMustBeOffline() bool
+
+	// Return true if the caller should check if Status.SizeBytes
+	// needs updating, based on whether the Blob is currently staged.
+	SizeNeedsCheck(staged bool) bool
 }
