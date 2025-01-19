@@ -81,7 +81,7 @@ func (r *VolumeNodeReconciler) reconcileThinAttaching(ctx context.Context, volum
 		// is honored before actually resuming the dm
 		log.Info("Attaching on local node")
 		if !isThinLvActiveOnLocalNode(thinPoolLv, thinLvName) {
-			return &util.WatchPending{}
+			return util.NewWatchPending("waiting for thinlv activation")
 		}
 		device = devName(volume)
 	} else {
@@ -89,7 +89,7 @@ func (r *VolumeNodeReconciler) reconcileThinAttaching(ctx context.Context, volum
 		// is an NBD export, and connect to it before resuming the dm
 		log.Info("Attaching via NBD client")
 		if volume.Status.NBDExport == "" {
-			return &util.WatchPending{}
+			return util.NewWatchPending("waiting for NBD server")
 		}
 		nbdExport := &v1alpha1.NBDExport{}
 		err := r.Get(ctx, types.NamespacedName{Name: volume.Status.NBDExport, Namespace: config.Namespace}, nbdExport)
@@ -135,7 +135,7 @@ func (r *VolumeNodeReconciler) reconcileThinDetaching(ctx context.Context, volum
 		return err
 	}
 	if thinPoolLv.Status.ActiveOnNode == config.LocalNodeName {
-		return &util.WatchPending{}
+		return util.NewWatchPending("waiting for thinlv deactivation")
 	}
 	return nil
 }
@@ -187,7 +187,7 @@ func (r *VolumeNodeReconciler) reconcileThinNBDCleanup(ctx context.Context, volu
 				return err
 			}
 		} else {
-			return &util.WatchPending{}
+			return util.NewWatchPending("waiting for NBD clients to detach")
 		}
 	}
 	return nil
@@ -387,8 +387,8 @@ func (r *VolumeNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		err = errors.NewBadRequest("invalid volume mode")
 	}
 
-	if _, ok := err.(*util.WatchPending); ok {
-		log.Info("reconcile waiting for Watch")
+	if watch, ok := err.(*util.WatchPending); ok {
+		log.Info("reconcile waiting for Watch", "why", watch.Why)
 		return ctrl.Result{}, nil // wait until Watch triggers
 	}
 

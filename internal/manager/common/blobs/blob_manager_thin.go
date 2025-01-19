@@ -170,7 +170,7 @@ func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes
 	}
 
 	if !m.checkThinLvExists(thinPoolLv, thinLvName, sizeBytes) {
-		return &util.WatchPending{}
+		return util.NewWatchPending("waiting for thin pool creation")
 	}
 	// TODO propagate back errors
 
@@ -250,7 +250,7 @@ func (m *ThinBlobManager) SnapshotBlob(ctx context.Context, name string, sourceN
 	}
 
 	if !m.checkThinLvExists(thinPoolLv, thinLvName, sourceThinLv.SizeBytes) {
-		return &util.WatchPending{}
+		return util.NewWatchPending("waiting for blob creation")
 	}
 	// TODO propagate back errors
 
@@ -285,7 +285,7 @@ func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string) error {
 	}
 
 	if !m.checkThinLvRemoved(thinPoolLv, thinLvName) {
-		return &util.WatchPending{}
+		return util.NewWatchPending("waiting for blob removal")
 	}
 
 	err = m.forgetRemovedThinLv(ctx, thinPoolLv, thinLvName)
@@ -294,7 +294,7 @@ func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string) error {
 		return err
 	}
 	if thinPoolLv.Status.FindThinLv(thinLvName) != nil {
-		return &util.WatchPending{}
+		return util.NewWatchPending("waiting for thinlv cleanup")
 	}
 
 	// update thinPoolLv to clear Spec.ActiveOnNode, if necessary

@@ -57,7 +57,7 @@ func Startup() {
 // Fail with WatchPending if the export is not serving.
 func ConnectClient(ctx context.Context, c client.Client, export *v1alpha1.NBDExport) (string, error) {
 	if export == nil || export.Status.URI == "" || ExportDegraded(export) {
-		return "", &util.WatchPending{}
+		return "", util.NewWatchPending("waiting for NBD server to become available")
 	}
 
 	clients.Lock()
