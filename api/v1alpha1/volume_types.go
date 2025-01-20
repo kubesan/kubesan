@@ -134,8 +134,10 @@ const (
 )
 
 const (
-	VolumeConditionAvailable = "Available"
-	VolumeConditionAbnormal  = "Abnormal"
+	VolumeConditionLvCreated           = "LvCreated"
+	VolumeConditionDataSourceCompleted = "DataSourceCompleted"
+	VolumeConditionAvailable           = "Available"
+	VolumeConditionAbnormal            = "Abnormal"
 )
 
 type VolumeStatus struct {
@@ -145,6 +147,9 @@ type VolumeStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration"`
 
 	// Conditions
+	// LvCreated: An empty LVM Logical Volume has been created but may
+	// still require population from a data source
+	// DataSourceCompleted: Data has been populated from the data source
 	// Available: The LVM volume has been created
 	// DataSourceCompleted: Any data source has been copied into the LVM,
 	// so that it is now ready to be attached to nodes

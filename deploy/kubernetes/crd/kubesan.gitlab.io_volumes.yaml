@@ -187,6 +187,9 @@ spec:
               conditions:
                 description: |-
                   Conditions
+                  LvCreated: An empty LVM Logical Volume has been created but may
+                  still require population from a data source
+                  DataSourceCompleted: Data has been populated from the data source
                   Available: The LVM volume has been created
                   DataSourceCompleted: Any data source has been copied into the LVM,
                   so that it is now ready to be attached to nodes

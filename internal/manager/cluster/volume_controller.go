@@ -101,7 +101,7 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 
 	// create LVM LV if necessary
 
-	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable) {
+	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionLvCreated) {
 		if err := blobMgr.CreateBlob(ctx, volume.Name, volume.Spec.SizeBytes, volume); err != nil {
 			return err
 		}
@@ -109,14 +109,38 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 		log.Info("CreateBlob succeeded")
 
 		condition := metav1.Condition{
-			Type:    v1alpha1.VolumeConditionAvailable,
+			Type:    v1alpha1.VolumeConditionLvCreated,
 			Status:  metav1.ConditionTrue,
 			Reason:  "Created",
 			Message: "lvm logical volume created",
 		}
 		meta.SetStatusCondition(&volume.Status.Conditions, condition)
 
+		// Shortcut when data population is not required
+		if volume.Spec.Contents.ContentsType == v1alpha1.VolumeContentsTypeEmpty {
+			condition := metav1.Condition{
+				Type:    v1alpha1.VolumeConditionDataSourceCompleted,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Completed",
+				Message: "population from data source completed",
+			}
+			meta.SetStatusCondition(&volume.Status.Conditions, condition)
+		}
+
 		volume.Status.Path = blobMgr.GetPath(volume.Name)
+		needsUpdate = true
+	}
+
+	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable) &&
+		meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionDataSourceCompleted) {
+		condition := metav1.Condition{
+			Type:    v1alpha1.VolumeConditionAvailable,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Available",
+			Message: "volume ready for use",
+		}
+		meta.SetStatusCondition(&volume.Status.Conditions, condition)
+
 		needsUpdate = true
 	}
 
