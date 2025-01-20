@@ -12,6 +12,10 @@ import (
 type SnapshotSpec struct {
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
+	VgName string `json:"vgName"`
+
+	// Should be set from creation and never updated.
+	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	SourceVolume string `json:"sourceVolume"`
 }
 
