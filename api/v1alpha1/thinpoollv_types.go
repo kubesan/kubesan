@@ -12,6 +12,9 @@ import (
 type ThinPoolLvSpec struct {
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
+	// + This pattern is only barely more permissive than lvm VG naming rules, other than a shorter length.
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_][-a-zA-Z0-9+_.]*$"
 	VgName string `json:"vgName"`
 
 	// Initial size of the thin pool.  Must be a multiple of 512.
@@ -26,11 +29,15 @@ type ThinPoolLvSpec struct {
 	// +optional
 	// +listType=map
 	// +listMapKey=name
+	// +kubebuilder:validation:MaxItems=65536
 	ThinLvs []ThinLvSpec `json:"thinLvs,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	// Name of node where activation is needed, or empty.
 	// When changing, may only toggle between "" and non-empty.
 	// +kubebuilder:validation:XValidation:rule=(oldSelf==self)||((oldSelf=="")!=(self==""))
+	// + This rule must permit RFC 1123 DNS subdomain names.
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern="^[a-z0-9][-.a-z0-9]*$"
 	ActiveOnNode string `json:"activeOnNode,omitempty"`
 }
 
@@ -48,12 +55,19 @@ func (s *ThinPoolLvSpec) FindThinLv(name string) *ThinLvSpec {
 // + not be permitted.
 type ThinLvSpec struct {
 	// Should be set from creation and never updated.
+	// +kubebuilder:validation:XValidation:rule=oldSelf==self
+	// + This is roughly one RFC 1123 label name.
+	// + This pattern is intentionally more restricted than lvm LV naming rules.
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[a-z0-9][-a-z0-9]*$"
 	Name string `json:"name"`
 
 	// Should be set from creation and never updated.
+	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	Contents ThinLvContents `json:"contents"`
 
 	// Should be set from creation and never updated.
+	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	ReadOnly bool `json:"readOnly"`
 
 	// Must be positive and a multiple of 512. May be updated at will, but the LVM thin LV's actual size will only
@@ -105,6 +119,10 @@ type ThinLvContents struct {
 }
 
 type ThinLvContentsSnapshot struct {
+	// The name of the source snapshot.
+	// + This rule intentionally matches ThinPoolLv.ThinLvSpec.Name
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[a-z][-a-z0-9]*$"
 	SourceThinLvName string `json:"sourceThinLvName"`
 }
 
@@ -129,6 +147,9 @@ type ThinPoolLvStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	// The name of the node where the LVM thin pool LV is active, along with any active LVM thin LVs; or "".
+	// + This rule must permit RFC 1123 DNS subdomain names.
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern="^[a-z0-9][-.a-z0-9]*$"
 	// +optional
 	ActiveOnNode string `json:"activeOnNode,omitempty"`
 
@@ -138,6 +159,7 @@ type ThinPoolLvStatus struct {
 	// +optional
 	// +listType=map
 	// +listMapKey=name
+	// +kubebuilder:validation:MaxItems=65536
 	ThinLvs []ThinLvStatus `json:"thinLvs,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 }
 
@@ -152,6 +174,9 @@ func (s *ThinPoolLvStatus) FindThinLv(name string) *ThinLvStatus {
 
 type ThinLvStatus struct {
 	// The name of the LVM thin LV.
+	// + This rule intentionally matches ThinPoolLv.ThinLvSpec.Name
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[a-z][-a-z0-9]*$"
 	Name string `json:"name"`
 
 	// The state of the LVM thin LV.
@@ -185,6 +210,10 @@ type ThinLvStatusState struct {
 
 type ThinLvStatusStateActive struct {
 	// The path at which the LVM thin LV is available on the node where the LVM thin pool LV is active.
+	// + This rule must permit VG plus LV names. It could be written tighter
+	// + to ensure the basename matches our LV rules, but that adds CEL cost.
+	// +kubebuilder:validation:MaxLength=128
+	// +kubebuilder:validation:Pattern="^(|/dev/[-_+/a-z0-9]+)$"
 	Path string `json:"path"`
 }
 

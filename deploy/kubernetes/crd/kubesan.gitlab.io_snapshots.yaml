@@ -62,11 +62,15 @@ spec:
             properties:
               sourceVolume:
                 description: Should be set from creation and never updated.
+                maxLength: 63
+                pattern: ^[a-z0-9][-a-z0-9]*$
                 type: string
                 x-kubernetes-validations:
                 - rule: oldSelf==self
               vgName:
                 description: Should be set from creation and never updated.
+                maxLength: 63
+                pattern: ^[a-zA-Z0-9_][-a-zA-Z0-9+_.]*$
                 type: string
                 x-kubernetes-validations:
                 - rule: oldSelf==self

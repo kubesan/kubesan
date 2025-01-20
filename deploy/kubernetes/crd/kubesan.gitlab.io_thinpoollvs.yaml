@@ -65,6 +65,8 @@ spec:
                 description: |-
                   Name of node where activation is needed, or empty.
                   When changing, may only toggle between "" and non-empty.
+                maxLength: 253
+                pattern: ^[a-z0-9][-.a-z0-9]*$
                 type: string
                 x-kubernetes-validations:
                 - rule: (oldSelf==self)||((oldSelf=="")!=(self==""))
@@ -92,6 +94,9 @@ spec:
                         snapshot:
                           properties:
                             sourceThinLvName:
+                              description: The name of the source snapshot.
+                              maxLength: 63
+                              pattern: ^[a-z][-a-z0-9]*$
                               type: string
                           required:
                           - sourceThinLvName
@@ -99,12 +104,20 @@ spec:
                       required:
                       - contentsType
                       type: object
+                      x-kubernetes-validations:
+                      - rule: oldSelf==self
                     name:
                       description: Should be set from creation and never updated.
+                      maxLength: 63
+                      pattern: ^[a-z0-9][-a-z0-9]*$
                       type: string
+                      x-kubernetes-validations:
+                      - rule: oldSelf==self
                     readOnly:
                       description: Should be set from creation and never updated.
                       type: boolean
+                      x-kubernetes-validations:
+                      - rule: oldSelf==self
                     sizeBytes:
                       description: |-
                         Must be positive and a multiple of 512. May be updated at will, but the LVM thin LV's actual size will only
@@ -132,12 +145,15 @@ spec:
                   - sizeBytes
                   - state
                   type: object
+                maxItems: 65536
                 type: array
                 x-kubernetes-list-map-keys:
                 - name
                 x-kubernetes-list-type: map
               vgName:
                 description: Should be set from creation and never updated.
+                maxLength: 63
+                pattern: ^[a-zA-Z0-9_][-a-zA-Z0-9+_.]*$
                 type: string
                 x-kubernetes-validations:
                 - rule: oldSelf==self
@@ -150,6 +166,8 @@ spec:
               activeOnNode:
                 description: The name of the node where the LVM thin pool LV is active,
                   along with any active LVM thin LVs; or "".
+                maxLength: 253
+                pattern: ^[a-z0-9][-.a-z0-9]*$
                 type: string
               conditions:
                 description: |-
@@ -240,6 +258,8 @@ spec:
                   properties:
                     name:
                       description: The name of the LVM thin LV.
+                      maxLength: 63
+                      pattern: ^[a-z][-a-z0-9]*$
                       type: string
                     sizeBytes:
                       description: The current size of the LVM thin LV.
@@ -253,6 +273,8 @@ spec:
                             path:
                               description: The path at which the LVM thin LV is available
                                 on the node where the LVM thin pool LV is active.
+                              maxLength: 128
+                              pattern: ^(|/dev/[-_+/a-z0-9]+)$
                               type: string
                           required:
                           - path
@@ -271,6 +293,7 @@ spec:
                   - sizeBytes
                   - state
                   type: object
+                maxItems: 65536
                 type: array
                 x-kubernetes-list-map-keys:
                 - name
