@@ -22,8 +22,9 @@ type BlobManager interface {
 	CreateBlob(ctx context.Context, name string, sizeBytes int64, owner client.Object) error
 
 	// RemoveBlob removes a blob if it exists. No error is returned if the
-	// blob does not exist.
-	RemoveBlob(ctx context.Context, name string) error
+	// blob does not exist. An owner reference may be removed from the
+	// given owner to a dependent resource associated with the blob.
+	RemoveBlob(ctx context.Context, name string, owner client.Object) error
 
 	// SnapshotBlob creates a snapshot with a given name from an existing
 	// source blob.  If snapshots are not supported, this will fail.

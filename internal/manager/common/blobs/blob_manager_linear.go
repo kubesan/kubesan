@@ -100,7 +100,7 @@ func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeByt
 	return nil
 }
 
-func (m *LinearBlobManager) RemoveBlob(ctx context.Context, name string) error {
+func (m *LinearBlobManager) RemoveBlob(ctx context.Context, name string, owner client.Object) error {
 	// stop blkdiscard in case it's running
 	if err := m.workers.Cancel(m.blkdiscardWorkName(name)); err != nil {
 		return err

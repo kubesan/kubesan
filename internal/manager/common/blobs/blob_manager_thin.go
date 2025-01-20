@@ -216,14 +216,10 @@ func (m *ThinBlobManager) GetSize(ctx context.Context, name string) (int64, erro
 func (m *ThinBlobManager) SnapshotBlob(ctx context.Context, name string, sourceName string, owner client.Object) error {
 	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
 
-	if sourceName != m.poolName {
-		return errors.NewBadRequest("source name must match blob manager pool name")
-	}
-
 	log.Info("SnapshotBlob entered", "name", name)
 	defer log.Info("SnapshotBlob exited")
 
-	thinPoolLv, err := m.getThinPoolLv(ctx, sourceName)
+	thinPoolLv, err := m.getThinPoolLv(ctx, m.poolName)
 	if err != nil {
 		log.Error(err, "SnapshotBlob getThinPoolLv failed")
 		return err
@@ -268,7 +264,7 @@ func (m *ThinBlobManager) SnapshotBlob(ctx context.Context, name string, sourceN
 	return nil
 }
 
-func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string) error {
+func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string, owner client.Object) error {
 	log := log.FromContext(ctx).WithValues("blobName", name, "thinPoolLvName", m.poolName, "nodeName", config.LocalNodeName)
 
 	thinPoolLv, err := m.getThinPoolLv(ctx, m.poolName)
@@ -300,6 +296,14 @@ func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string) error {
 	if thinPoolLv.Status.FindThinLv(thinLvName) != nil {
 		return util.NewWatchPending("waiting for thinlv cleanup")
 	}
+
+	// Normally when a Volume or Snapshot is deleted k8s automatically
+	// removes the owner reference, but cloning creates temporary snapshot
+	// LVs that are removed when cloning completes and the target Volume
+	// still lives for a long time. Try to remove the owner reference here
+	// but ignore errors in case k8s already removed it.
+
+	_ = controllerutil.RemoveOwnerReference(owner, thinPoolLv, m.scheme)
 
 	// update thinPoolLv to clear Spec.ActiveOnNode, if necessary
 

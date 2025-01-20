@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -58,6 +59,118 @@ func (r *VolumeReconciler) newBlobManager(volume *v1alpha1.Volume) (blobs.BlobMa
 	}
 }
 
+// Returns the name of a temporary snapshot for volume cloning
+func cloneVolumeSnapshotName(volumeName string) string {
+	return "clone-" + volumeName
+}
+
+// Get a BlobManager and blob name for a given volume's data source
+func (r *VolumeReconciler) getDataSourceBlob(ctx context.Context, volume *v1alpha1.Volume) (blobs.BlobManager, string, error) {
+	switch volume.Spec.Contents.ContentsType {
+	case v1alpha1.VolumeContentsTypeCloneVolume:
+		name := volume.Spec.Contents.CloneVolume.SourceVolume
+
+		dataSrcVolume := &v1alpha1.Volume{}
+		if err := r.Client.Get(ctx, types.NamespacedName{Name: name, Namespace: config.Namespace}, dataSrcVolume); err != nil {
+			return nil, "", err
+		}
+
+		blobMgr, err := r.newBlobManager(dataSrcVolume)
+		if err != nil {
+			return nil, "", err
+		}
+		return blobMgr, name, nil
+	case v1alpha1.VolumeContentsTypeCloneSnapshot:
+		name := volume.Spec.Contents.CloneSnapshot.SourceSnapshot
+
+		dataSrcSnapshot := &v1alpha1.Snapshot{}
+		if err := r.Client.Get(ctx, types.NamespacedName{Name: name, Namespace: config.Namespace}, dataSrcSnapshot); err != nil {
+			return nil, "", err
+		}
+
+		blobMgr := blobs.NewThinBlobManager(r.Client, r.Scheme, dataSrcSnapshot.Spec.VgName, dataSrcSnapshot.Spec.SourceVolume)
+		return blobMgr, name, nil
+	default:
+		return nil, "", errors.NewBadRequest("cannot get data source for volume without contents")
+	}
+}
+
+func (r *VolumeReconciler) activateDataSource(ctx context.Context, blobMgr blobs.BlobManager, volume *v1alpha1.Volume) error {
+	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
+
+	if volume.Spec.Contents.ContentsType == v1alpha1.VolumeContentsTypeEmpty {
+		return nil // do nothing
+	}
+
+	dataSrcBlobMgr, dataSrcBlobName, err := r.getDataSourceBlob(ctx, volume)
+	if err != nil {
+		return err
+	}
+
+	// create a temporary snapshot to clone from
+
+	tmpBlobName := cloneVolumeSnapshotName(volume.Name)
+	if err := dataSrcBlobMgr.SnapshotBlob(ctx, tmpBlobName, dataSrcBlobName, volume); err != nil {
+		return err
+	}
+
+	log.Info("Temporary snapshot created for cloning", "tmpBlobName", tmpBlobName)
+
+	if err := dataSrcBlobMgr.ActivateBlobForCloneSource(ctx, tmpBlobName, volume); err != nil {
+		return err
+	}
+
+	log.Info("Activated source blob for cloning", "tmpBlobName", tmpBlobName)
+
+	if err := blobMgr.ActivateBlobForCloneTarget(ctx, volume.Name, dataSrcBlobMgr); err != nil {
+		return err
+	}
+
+	log.Info("Activated target blob for cloning", "volumeName", volume.Name)
+
+	return nil
+}
+
+func (r *VolumeReconciler) deactivateDataSource(ctx context.Context, blobMgr blobs.BlobManager, volume *v1alpha1.Volume) error {
+	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
+
+	if volume.Spec.Contents.ContentsType == v1alpha1.VolumeContentsTypeEmpty {
+		return nil // do nothing
+	}
+
+	if err := blobMgr.DeactivateBlobForCloneTarget(ctx, volume.Name); err != nil {
+		return err
+	}
+
+	log.Info("Deactivated target blob for cloning", "volumeName", volume.Name)
+
+	tmpBlobName := cloneVolumeSnapshotName(volume.Name)
+	dataSrcBlobMgr, _, err := r.getDataSourceBlob(ctx, volume)
+	if err == nil {
+		log.Info("About to deactivate source blob for cloning", "tmpBlobName", tmpBlobName)
+
+		if err := dataSrcBlobMgr.DeactivateBlobForCloneSource(ctx, tmpBlobName, volume); err != nil {
+			return err
+		}
+
+		log.Info("Deactivated source blob for cloning", "tmpBlobName", tmpBlobName)
+
+		// delete temporary snapshot
+
+		if err := dataSrcBlobMgr.RemoveBlob(ctx, tmpBlobName, volume); err != nil {
+			return err
+		}
+	} else if errors.IsNotFound(err) {
+		// already deleted
+	} else {
+		return err
+	}
+
+	log.Info("Removed temporary snapshot for cloning", "tmpBlobName", tmpBlobName)
+
+	return nil
+}
+
 func (r *VolumeReconciler) reconcileDeleting(ctx context.Context, blobMgr blobs.BlobManager, volume *v1alpha1.Volume) error {
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
@@ -66,7 +179,11 @@ func (r *VolumeReconciler) reconcileDeleting(ctx context.Context, blobMgr blobs.
 		return nil // wait until no longer attached
 	}
 
-	if err := blobMgr.RemoveBlob(ctx, volume.Name); err != nil {
+	if err := r.deactivateDataSource(ctx, blobMgr, volume); err != nil {
+		return err
+	}
+
+	if err := blobMgr.RemoveBlob(ctx, volume.Name, volume); err != nil {
 		// During deletion, if there were multiple
 		// OwnerReferences, we have no guarantee when
 		// kubernetes will remove our reference.  But once our
@@ -108,6 +225,12 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 
 		log.Info("CreateBlob succeeded")
 
+		if err := r.activateDataSource(ctx, blobMgr, volume); err != nil {
+			return err
+		}
+
+		log.Info("activateDataSource succeeded")
+
 		condition := metav1.Condition{
 			Type:    v1alpha1.VolumeConditionLvCreated,
 			Status:  metav1.ConditionTrue,
@@ -133,6 +256,10 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 
 	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable) &&
 		meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionDataSourceCompleted) {
+		if err := r.deactivateDataSource(ctx, blobMgr, volume); err != nil {
+			return err
+		}
+
 		condition := metav1.Condition{
 			Type:    v1alpha1.VolumeConditionAvailable,
 			Status:  metav1.ConditionTrue,
@@ -208,17 +335,6 @@ func (r *VolumeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		if volume.Spec.Contents.CloneSnapshot == nil || volume.Spec.Contents.CloneVolume != nil {
 			return ctrl.Result{}, errors.NewBadRequest("invalid volume contents")
 		}
-	}
-
-	switch volume.Spec.Contents.ContentsType {
-	case v1alpha1.VolumeContentsTypeEmpty:
-		// nothing to do
-
-	case v1alpha1.VolumeContentsTypeCloneVolume:
-		return ctrl.Result{}, errors.NewBadRequest("cloning volumes is not yet supported")
-
-	case v1alpha1.VolumeContentsTypeCloneSnapshot:
-		return ctrl.Result{}, errors.NewBadRequest("cloning snapshots is not yet supported")
 	}
 
 	err = r.reconcileNotDeleting(ctx, blobMgr, volume)

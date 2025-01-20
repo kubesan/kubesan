@@ -43,7 +43,7 @@ func SetUpSnapshotReconciler(mgr ctrl.Manager) error {
 func (r *SnapshotReconciler) reconcileDeleting(ctx context.Context, blobMgr blobs.BlobManager, snapshot *v1alpha1.Snapshot) error {
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
-	if err := blobMgr.RemoveBlob(ctx, snapshot.Name); err != nil {
+	if err := blobMgr.RemoveBlob(ctx, snapshot.Name, snapshot); err != nil {
 		return err
 	}
 
