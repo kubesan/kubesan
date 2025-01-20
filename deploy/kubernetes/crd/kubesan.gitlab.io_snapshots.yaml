@@ -161,6 +161,8 @@ spec:
                   as a witness when waiting for status to change.
                 format: int64
                 type: integer
+                x-kubernetes-validations:
+                - rule: self>=oldSelf
               sizeBytes:
                 description: The size of the snapshot, immutable once set.
                 format: int64

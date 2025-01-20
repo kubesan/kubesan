@@ -251,6 +251,8 @@ spec:
                   as a witness when waiting for status to change.
                 format: int64
                 type: integer
+                x-kubernetes-validations:
+                - rule: self>=oldSelf
               thinLvs:
                 description: The status of each LVM thin LV that currently exists
                   in the LVM thin pool LV.

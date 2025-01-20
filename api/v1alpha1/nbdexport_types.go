@@ -53,6 +53,7 @@ const (
 type NBDExportStatus struct {
 	// The generation of the spec used to produce this status.  Useful
 	// as a witness when waiting for status to change.
+	// +kubebuilder:validation:XValidation:rule=self>=oldSelf
 	ObservedGeneration int64 `json:"observedGeneration"`
 
 	// Conditions
