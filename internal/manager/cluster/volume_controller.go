@@ -186,8 +186,8 @@ func (r *VolumeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	err = r.reconcileNotDeleting(ctx, blobMgr, volume)
-	if _, ok := err.(*util.WatchPending); ok {
-		log.Info("reconcile waiting for Watch")
+	if watch, ok := err.(*util.WatchPending); ok {
+		log.Info("reconcile waiting for Watch", "why", watch.Why)
 		err = nil // wait until Watch triggers
 	}
 	return ctrl.Result{}, err

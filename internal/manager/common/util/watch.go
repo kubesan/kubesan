@@ -10,8 +10,18 @@ package util
 // other work in the meantime. When this error is returned, controllers should
 // return success from Reconcile() since the runtime will invoke Reconcile()
 // again when the Watch triggers.
-type WatchPending struct{}
+type WatchPending struct {
+	Why string
+}
 
 func (w *WatchPending) Error() string {
+	if w.Why != "" {
+		return "watch pending: " + w.Why
+	}
 	return "watch pending"
+}
+
+// Document why the code should wait for the next Reconcile.
+func NewWatchPending(why string) *WatchPending {
+	return &WatchPending{Why: why}
 }

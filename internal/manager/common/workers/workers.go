@@ -97,7 +97,7 @@ func (w *Workers) Run(name string, object client.Object, work Work) error {
 	}
 	result, done := worker.getResult()
 	if !done {
-		return &util.WatchPending{}
+		return util.NewWatchPending("waiting for worker to complete")
 	}
 	delete(w.Workers, name)
 	return result
@@ -113,7 +113,7 @@ func (w *Workers) Cancel(name string) error {
 	worker.cancel()
 	_, done := worker.getResult()
 	if !done {
-		return &util.WatchPending{}
+		return util.NewWatchPending("waiting for worker cancellation")
 	}
 	delete(w.Workers, name)
 	return nil
