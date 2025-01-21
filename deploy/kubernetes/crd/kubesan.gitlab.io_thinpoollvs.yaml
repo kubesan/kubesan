@@ -30,6 +30,10 @@ spec:
       jsonPath: .spec.vgName
       name: VG
       type: string
+    - description: '''Time since resource was created'''
+      jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     - description: '''Time since pool last changed activation status'''
       jsonPath: .status.conditions[?(@.type=="Active")].lastTransitionTime
       name: Activity
