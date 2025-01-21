@@ -32,6 +32,26 @@ type BlobManager interface {
 	// resource associated with the snapshot.
 	SnapshotBlob(ctx context.Context, name string, sourceName string, owner client.Object) error
 
+	// ActivateBlobForCloneSource activates a data source blob so it can be
+	// cloned. The owner may be updated to record that it depends on the
+	// data source. Make sure to call DeactivateBlobForCloneSource to clean
+	// up later.
+	ActivateBlobForCloneSource(ctx context.Context, name string, owner client.Object) error
+
+	// ActivateBlobForCloneTarget activates a cloning target blob. The data
+	// source blob's BlobManager must be given so the target blob can be
+	// activated on the same node as the source blob. Make sure to call
+	// DeactivateBlobForCloneTarget to clean up later.
+	ActivateBlobForCloneTarget(ctx context.Context, name string, dataSrcBlobMgr BlobManager) error
+
+	// DeactivateBlobForCloneSource deactivates a data source blob that was
+	// used for cloning. See ActivateBlobForCloneSource.
+	DeactivateBlobForCloneSource(ctx context.Context, name string, owner client.Object) error
+
+	// DeactivateBlobForCloneTarget deactivates a cloning target blob. See
+	// ActivateBlobForCloneTarget.
+	DeactivateBlobForCloneTarget(ctx context.Context, name string) error
+
 	// Returns the (logical) size in bytes of the blob.
 	GetSize(ctx context.Context, name string) (int64, error)
 

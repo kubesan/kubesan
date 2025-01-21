@@ -6,10 +6,14 @@ package thinpoollv
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
+	"gitlab.com/kubesan/kubesan/internal/manager/common/util"
+
+	"k8s.io/apimachinery/pkg/api/errors"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -49,7 +53,6 @@ func thinPoolLvNeedsActivation(thinPoolLv *v1alpha1.ThinPoolLv) bool {
 	// requiring activation/deactivation, otherwise the thin-pool will not
 	// be activated appropriately or may remain activated when it shouldn't
 	// be!
-	// TODO populating from contents (cloning)
 
 	for i := range thinPoolLv.Spec.ThinLvs {
 		thinLvSpec := &thinPoolLv.Spec.ThinLvs[i]
@@ -157,4 +160,62 @@ func UpdateThinPoolLv(ctx context.Context, client client.Client, oldThinPoolLv, 
 	}
 	log.Info("Updating ThinPoolLv", "former", former, "preferred", preferred, "Spec.ActiveOnNode", thinPoolLv.Spec.ActiveOnNode, "Status.ActiveOnNode", thinPoolLv.Status.ActiveOnNode)
 	return client.Update(ctx, thinPoolLv)
+}
+
+func ActivateThinLv(ctx context.Context, client client.Client, oldThinPoolLv, thinPoolLv *v1alpha1.ThinPoolLv, name string) error {
+	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
+
+	thinLvName := VolumeToThinLvName(name)
+	thinLvSpec := thinPoolLv.Spec.FindThinLv(thinLvName)
+	if thinLvSpec == nil {
+		return errors.NewBadRequest(fmt.Sprintf("thinLv \"%s\" not found", thinLvName))
+	}
+
+	switch thinLvSpec.State.Name {
+	case v1alpha1.ThinLvSpecStateNameInactive:
+		log.Info("Setting thin LV state to active")
+		thinLvSpec.State.Name = v1alpha1.ThinLvSpecStateNameActive
+	case v1alpha1.ThinLvSpecStateNameActive: // do nothing
+	default:
+		return errors.NewBadRequest(fmt.Sprintf("unexpected state for thinLv \"%s\"", thinLvName))
+	}
+
+	if err := UpdateThinPoolLv(ctx, client, oldThinPoolLv, thinPoolLv); err != nil {
+		return err
+	}
+
+	thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvName)
+	if thinLvStatus == nil || thinLvStatus.State.Name != v1alpha1.ThinLvStatusStateNameActive {
+		return &util.WatchPending{}
+	}
+	return nil
+}
+
+func DeactivateThinLv(ctx context.Context, client client.Client, oldThinPoolLv, thinPoolLv *v1alpha1.ThinPoolLv, name string) error {
+	thinLvName := VolumeToThinLvName(name)
+	thinLvSpec := thinPoolLv.Spec.FindThinLv(thinLvName)
+	if thinLvSpec == nil {
+		return errors.NewBadRequest(fmt.Sprintf("thinLv \"%s\" not found", thinLvName))
+	}
+
+	switch thinLvSpec.State.Name {
+	case v1alpha1.ThinLvSpecStateNameInactive: // do nothing
+	case v1alpha1.ThinLvSpecStateNameActive:
+		thinLvSpec.State.Name = v1alpha1.ThinLvSpecStateNameInactive
+	case v1alpha1.ThinLvSpecStateNameRemoved: // do nothing
+	default:
+		return errors.NewBadRequest(fmt.Sprintf("unexpected state for thinLv \"%s\"", thinLvName))
+	}
+
+	// activation may have changed as a result of the actions above
+
+	if err := UpdateThinPoolLv(ctx, client, oldThinPoolLv, thinPoolLv); err != nil {
+		return err
+	}
+
+	thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvName)
+	if thinLvStatus != nil && thinLvStatus.State.Name == v1alpha1.ThinLvStatusStateNameActive {
+		return &util.WatchPending{}
+	}
+	return nil
 }

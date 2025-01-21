@@ -23,6 +23,8 @@ const (
 
 	Finalizer = Domain + "/finalizer"
 
+	CloneSourceLabel = Domain + "/cloneSource"
+
 	CsiSocketPath = "/run/csi/socket"
 
 	LvmProfileName = "kubesan"

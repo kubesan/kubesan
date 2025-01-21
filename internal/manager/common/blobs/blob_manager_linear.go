@@ -118,6 +118,26 @@ func (m *LinearBlobManager) SnapshotBlob(ctx context.Context, name string, sourc
 	return errors.NewBadRequest("linear volumes do not support snapshots")
 }
 
+func (m *LinearBlobManager) ActivateBlobForCloneSource(ctx context.Context, name string, owner client.Object) error {
+	// Linear volumes do not support cloning
+	return errors.NewBadRequest("linear volumes do not support cloning")
+}
+
+func (m *LinearBlobManager) ActivateBlobForCloneTarget(ctx context.Context, name string, dataSrcBlobMgr BlobManager) error {
+	// Linear volumes do not support cloning
+	return errors.NewBadRequest("linear volumes do not support cloning")
+}
+
+func (m *LinearBlobManager) DeactivateBlobForCloneSource(ctx context.Context, name string, owner client.Object) error {
+	// Linear volumes do not support cloning
+	return errors.NewBadRequest("linear volumes do not support cloning")
+}
+
+func (m *LinearBlobManager) DeactivateBlobForCloneTarget(ctx context.Context, name string) error {
+	// Linear volumes do not support cloning
+	return errors.NewBadRequest("linear volumes do not support cloning")
+}
+
 // Return the actual size of the blob.
 func (m *LinearBlobManager) GetSize(ctx context.Context, name string) (int64, error) {
 	return commands.LvmSize(m.vgName, name)
