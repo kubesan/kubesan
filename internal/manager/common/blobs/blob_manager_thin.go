@@ -87,7 +87,7 @@ func (m *ThinBlobManager) createThinPoolLv(ctx context.Context, name string, siz
 }
 
 // Add or update ThinLvSpec in ThinPoolLv.Spec.ThinLvs[]
-func (m *ThinBlobManager) createThinLv(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv, name string, sizeBytes int64, contents *v1alpha1.ThinLvContents) error {
+func (m *ThinBlobManager) createThinLv(ctx context.Context, oldThinPoolLv, thinPoolLv *v1alpha1.ThinPoolLv, name string, sizeBytes int64, contents *v1alpha1.ThinLvContents) error {
 	readOnly := contents.ContentsType == v1alpha1.ThinLvContentsTypeSnapshot
 
 	thinlv := &v1alpha1.ThinLvSpec{
@@ -105,13 +105,17 @@ func (m *ThinBlobManager) createThinLv(ctx context.Context, thinPoolLv *v1alpha1
 	old := thinPoolLv.Spec.FindThinLv(name)
 	if old == nil {
 		thinPoolLv.Spec.ThinLvs = append(thinPoolLv.Spec.ThinLvs, *thinlv)
-	} else if reflect.DeepEqual(old, thinlv) {
-		return nil // no change
 	} else {
+		thinlv.State = old.State // keep the current state
+
+		if reflect.DeepEqual(old, thinlv) {
+			return nil // no change
+		}
+
 		*old = *thinlv
 	}
 
-	return thinpoollv.UpdateThinPoolLv(ctx, m.client, nil, thinPoolLv)
+	return thinpoollv.UpdateThinPoolLv(ctx, m.client, oldThinPoolLv, thinPoolLv)
 }
 
 // Is the thin LV listed in Status.ThinLvs[] with the correct size?
@@ -163,7 +167,7 @@ func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes
 
 	thinLvName := thinpoollv.VolumeToThinLvName(name)
 	contents := &v1alpha1.ThinLvContents{ContentsType: v1alpha1.ThinLvContentsTypeEmpty}
-	err = m.createThinLv(ctx, thinPoolLv, thinLvName, sizeBytes, contents)
+	err = m.createThinLv(ctx, oldThinPoolLv, thinPoolLv, thinLvName, sizeBytes, contents)
 	if err != nil {
 		log.Error(err, "CreateBlob createThinLv failed")
 		return err
@@ -243,7 +247,7 @@ func (m *ThinBlobManager) SnapshotBlob(ctx context.Context, name string, sourceN
 		Snapshot: &v1alpha1.ThinLvContentsSnapshot{
 			SourceThinLvName: sourceThinLv.Name,
 		}}
-	err = m.createThinLv(ctx, thinPoolLv, thinLvName, sourceThinLv.SizeBytes, contents)
+	err = m.createThinLv(ctx, oldThinPoolLv, thinPoolLv, thinLvName, sourceThinLv.SizeBytes, contents)
 	if err != nil {
 		log.Error(err, "SnapshotBlob createThinLv failed")
 		return err
