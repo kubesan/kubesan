@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-ksan-supported-modes # TODO add Thin when cloning is implemented
+ksan-supported-modes Thin
 
 ksan-stage 'Creating volume 1...'
 ksan-create-rwo-volume test-pvc-1 64Mi
@@ -26,7 +26,7 @@ spec:
     name: test-pvc-1
 EOF
 
-ksan-wait-for-pvc-to-be-bound 300 test-pvc-2
+ksan-wait-for-pvc-to-be-bound 60 test-pvc-2
 
 ksan-stage 'Validating volume data and independence between volumes 1 and 2...'
 
@@ -81,7 +81,7 @@ spec:
     name: test-pvc-2
 EOF
 
-ksan-wait-for-pvc-to-be-bound 300 test-pvc-3
+ksan-wait-for-pvc-to-be-bound 60 test-pvc-3
 
 ksan-stage 'Validating volume data and independence between volumes 2 and 3...'
 
