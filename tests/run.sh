@@ -176,7 +176,7 @@ else
     done
 fi
 
-# sandox support might not be available for all providers
+# sandbox support might not be available for all providers
 if (( sandbox )) && ! (( support_sandbox )); then
     >&2 echo "${deploy_tool} does not support sandbox mode!"
     exit 1

@@ -4,7 +4,7 @@
 # template attributes
 
 # set to 1 if this deployer will also create/delete/manage clusters locally.
-# set to 0 if cluster is already deployed (for example an extenal OCP deploy)
+# set to 0 if cluster is already deployed (for example an external OCP deploy)
 requires_local_deploy=1
 
 # set to 1 if a tool that usually  is not available on the system needs
@@ -41,7 +41,7 @@ support_multiple_clusters=0
 support_snapshots=1
 
 # some deployers automatically add information to the current
-# user kubeconfig. Set to 1 to load the contex from kubeconfig
+# user kubeconfig. Set to 1 to load the context from kubeconfig
 # or 0 otherwise.
 support_set_kubectl_context=0
 

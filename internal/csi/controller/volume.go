@@ -384,7 +384,7 @@ func validateCapabilities(volume *v1alpha1.Volume, capabilities []*csi.VolumeCap
 	// A subset of access modes is still okay
 	accessModes, err := getVolumeAccessModes(capabilities)
 	if err != nil {
-		return "incomptible access modes"
+		return "incompatible access modes"
 	}
 	for _, mode := range accessModes {
 		if !slices.Contains(volume.Spec.AccessModes, mode) {
