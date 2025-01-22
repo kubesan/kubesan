@@ -220,7 +220,7 @@ spec:
   volumeMode: Block
   resources:
     requests:
-      storage: 1Ti
+      storage: 100Gi
   accessModes:
     - ReadWriteOnce
 ---
@@ -277,6 +277,13 @@ may want to [set the default
 StorageClass](https://kubernetes.io/docs/tasks/administer-cluster/change-default-storage-class/)
 for use by Persistent Volume Claims that don't explicitly request a
 storageclass.
+
+Linear volumes are inherently limited by the size of the volume group,
+but Thin volumes can be overcommitted.  You may wish to set up
+[resource
+quotas](https://kubernetes.io/docs/concepts/policy/resource-quotas/#viewing-and-setting-quotas)
+on your cluster to ensure that persistent volume claims do not request
+unreasonably large amounts of storage.
 
 The following matrix documents setups that KubeSAN supports or plans to
 support in a future release:
