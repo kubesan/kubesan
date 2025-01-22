@@ -111,13 +111,15 @@ every node in the cluster:
 
 ```console
 # hide devices from LVM when invoked without --devicesfile my-vg
+$ sudo mkdir -p /etc/lvm/devices
 $ sudo touch /etc/lvm/devices/system.devices
 
 # create a devices file for my-vg
-$ sudo vgimportdevices my-vg --devicesfile my-vg
+# the "--lock-opt skipgl" works around a bug fixed in lvm 2.03.25
+$ sudo vgimportdevices --lock-opt skipgl my-vg --devicesfile my-vg
 
 # add devices so dmeventd sees them for automatic extension of thin-pools
-$ sudo vgimportdevices my-vg --devicesfile dmeventd.devices
+$ sudo vgimportdevices --lock-opt skipgl my-vg --devicesfile dmeventd.devices
 
 # check if sanlock and lvmlockd are configured correctly
 $ sudo vgchange --devicesfile my-vg --lock-start

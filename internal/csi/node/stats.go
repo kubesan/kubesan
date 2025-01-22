@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
+	"gitlab.com/kubesan/kubesan/internal/common/dm"
 	"gitlab.com/kubesan/kubesan/internal/csi/common/validate"
 )
 
@@ -54,10 +55,23 @@ func (s *NodeServer) NodeGetVolumeStats(ctx context.Context, req *csi.NodeGetVol
 		message = cond.Message
 	}
 
+	// When resizing thin volumes, this node may still see a
+	// smaller size through the device mapper than what the
+	// underlying LV has been sized to.  The controller reports
+	// the cluster size, but this gRPC call reports what _this_
+	// node sees.
+	sizeBytes := volume.Status.SizeBytes
+	if volume.Spec.Mode == v1alpha1.VolumeModeThin {
+		sizeBytes, err = dm.GetSize(ctx, volume.Name)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &csi.NodeGetVolumeStatsResponse{
 		Usage: []*csi.VolumeUsage{
 			{
-				Total: volume.Status.SizeBytes,
+				Total: sizeBytes,
 				Unit:  csi.VolumeUsage_BYTES,
 			},
 		},
