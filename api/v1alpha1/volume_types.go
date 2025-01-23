@@ -81,13 +81,24 @@ type VolumeTypeFilesystem struct {
 	MountOptions []string `json:"mountOptions,omitempty"`
 }
 
-type VolumeContents struct {
-	Empty         *VolumeContentsEmpty         `json:"empty,omitempty"`
-	CloneVolume   *VolumeContentsCloneVolume   `json:"cloneVolume,omitempty"`
-	CloneSnapshot *VolumeContentsCloneSnapshot `json:"cloneSnapshot,omitempty"`
-}
+const (
+	VolumeContentsTypeEmpty         = "Empty"
+	VolumeContentsTypeCloneVolume   = "CloneVolume"
+	VolumeContentsTypeCloneSnapshot = "CloneSnapshot"
+)
 
-type VolumeContentsEmpty struct {
+// +union
+type VolumeContents struct {
+	// +unionDiscriminator
+	// +kubebuilder:validation:Enum:="Empty";"CloneVolume";"CloneSnapshot"
+	// +kubebuilder:validation:Required
+	ContentsType string `json:"contentsType"`
+
+	// +optional
+	CloneVolume *VolumeContentsCloneVolume `json:"cloneVolume,omitempty"`
+
+	// +optional
+	CloneSnapshot *VolumeContentsCloneSnapshot `json:"cloneSnapshot,omitempty"`
 }
 
 type VolumeContentsCloneVolume struct {

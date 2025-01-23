@@ -93,6 +93,7 @@ const (
 	ThinLvContentsTypeSnapshot = "Snapshot"
 )
 
+// +union
 type ThinLvContents struct {
 	// +unionDiscriminator
 	// +kubebuilder:validation:Enum:="Empty";"Snapshot"

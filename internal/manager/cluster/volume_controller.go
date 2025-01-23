@@ -166,22 +166,34 @@ func (r *VolumeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, errors.NewBadRequest("invalid volume type")
 	}
 
-	if kubesanslices.CountNonNil(
-		volume.Spec.Contents.Empty,
-		volume.Spec.Contents.CloneVolume,
-		volume.Spec.Contents.CloneSnapshot,
-	) != 1 {
-		return ctrl.Result{}, errors.NewBadRequest("invalid volume contents")
+	switch volume.Spec.Contents.ContentsType {
+	case v1alpha1.VolumeContentsTypeEmpty:
+		if kubesanslices.CountNonNil(
+			volume.Spec.Contents.CloneVolume,
+			volume.Spec.Contents.CloneSnapshot,
+		) != 0 {
+			return ctrl.Result{}, errors.NewBadRequest("invalid volume contents")
+		}
+
+	case v1alpha1.VolumeContentsTypeCloneVolume:
+		if volume.Spec.Contents.CloneVolume == nil || volume.Spec.Contents.CloneSnapshot != nil {
+			return ctrl.Result{}, errors.NewBadRequest("invalid volume contents")
+		}
+
+	case v1alpha1.VolumeContentsTypeCloneSnapshot:
+		if volume.Spec.Contents.CloneSnapshot == nil || volume.Spec.Contents.CloneVolume != nil {
+			return ctrl.Result{}, errors.NewBadRequest("invalid volume contents")
+		}
 	}
 
-	switch {
-	case volume.Spec.Contents.Empty != nil:
+	switch volume.Spec.Contents.ContentsType {
+	case v1alpha1.VolumeContentsTypeEmpty:
 		// nothing to do
 
-	case volume.Spec.Contents.CloneVolume != nil:
+	case v1alpha1.VolumeContentsTypeCloneVolume:
 		return ctrl.Result{}, errors.NewBadRequest("cloning volumes is not yet supported")
 
-	case volume.Spec.Contents.CloneSnapshot != nil:
+	case v1alpha1.VolumeContentsTypeCloneSnapshot:
 		return ctrl.Result{}, errors.NewBadRequest("cloning snapshots is not yet supported")
 	}
 
