@@ -159,6 +159,9 @@ func UpdateThinPoolLv(ctx context.Context, client client.Client, oldThinPoolLv, 
 		return nil
 	}
 	log.Info("Updating ThinPoolLv", "former", former, "preferred", preferred, "Spec.ActiveOnNode", thinPoolLv.Spec.ActiveOnNode, "Status.ActiveOnNode", thinPoolLv.Status.ActiveOnNode)
+	if oldThinPoolLv != nil {
+		thinPoolLv.DeepCopyInto(oldThinPoolLv)
+	}
 	return client.Update(ctx, thinPoolLv)
 }
 
