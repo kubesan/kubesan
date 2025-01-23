@@ -14,24 +14,35 @@ type NBDExportSpec struct {
 	// The short name of the LV (Volume or Snapshot) to export, write-once
 	// at creation.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
-	// +kubebuilder:validation:Pattern="[-a-z0-9]+"
+	// + This is roughly one RFC 1123 label name.
+	// + This rule intentionally matches ThinPoolLv.ThinLvSpec.Name
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[a-z0-9][-a-z0-9]*$"
 	Export string `json:"export"`
 
 	// The "/dev/..." path of the export, write-once at creation, then
 	// cleared to trigger server stop.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
-	// +kubebuilder:validation:Pattern="^(|/dev/[-_/a-z0-9]+)$"
+	// + This rule must permit VG plus LV names. It could be written tighter
+	// + to ensure the basename matches Export, but that adds CEL cost.
+	// +kubebuilder:validation:MaxLength=128
+	// +kubebuilder:validation:Pattern="^(|/dev/[-_+/a-z0-9]+)$"
 	// +optional
 	Path string `json:"path,omitempty"`
 
 	// The node hosting the export. Write-once at creation.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
-	// +kubebuilder:validation:Pattern="[-_.a-z0-9]+"
+	// + This rule must permit RFC 1123 DNS subdomain names.
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern="^[a-z0-9][-.a-z0-9]*$"
 	Host string `json:"host"`
 
 	// The set of clients connecting to the export.
 	// +optional
 	// +listType=set
+	// + This rule must permit RFC 1123 DNS subdomain names.
+	// +kubebuilder:validation:items:MaxLength=253
+	// +kubebuilder:validation:items:Pattern="^[a-z0-9][-.a-z0-9]*$"
 	Clients []string `json:"clients,omitempty"`
 }
 
@@ -42,6 +53,7 @@ const (
 type NBDExportStatus struct {
 	// The generation of the spec used to produce this status.  Useful
 	// as a witness when waiting for status to change.
+	// +kubebuilder:validation:XValidation:rule=self>=oldSelf
 	ObservedGeneration int64 `json:"observedGeneration"`
 
 	// Conditions
@@ -57,7 +69,8 @@ type NBDExportStatus struct {
 	// write-once when Conditions["Available"] is first set
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	// + TODO Add TLS support, which changes this to a nbds:// URI
-	// +kubebuilder:validation:Pattern="nbd://[0-9a-f:.]+/[-a-z0-9]+"
+	// +kubebuilder:validation:items:MaxLength=128
+	// +kubebuilder:validation:Pattern="^nbd://[0-9a-f:.]+/[a-z][-a-z0-9]*$"
 	URI string `json:"uri,omitempty"`
 }
 

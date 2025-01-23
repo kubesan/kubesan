@@ -12,6 +12,16 @@ import (
 type SnapshotSpec struct {
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
+	// + This pattern is only barely more permissive than lvm VG naming rules, other than a shorter length.
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_][-a-zA-Z0-9+_.]*$"
+	VgName string `json:"vgName"`
+
+	// Should be set from creation and never updated.
+	// +kubebuilder:validation:XValidation:rule=oldSelf==self
+	// + This is roughly RFC 1123 label name.
+	// +kubebuilder:validation:MaxLength=63
+	// +kubebuilder:validation:Pattern="^[a-z0-9][-a-z0-9]*$"
 	SourceVolume string `json:"sourceVolume"`
 }
 
@@ -22,6 +32,7 @@ const (
 type SnapshotStatus struct {
 	// The generation of the spec used to produce this status.  Useful
 	// as a witness when waiting for status to change.
+	// +kubebuilder:validation:XValidation:rule=self>=oldSelf
 	ObservedGeneration int64 `json:"observedGeneration"`
 
 	// Conditions

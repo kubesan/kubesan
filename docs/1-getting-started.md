@@ -95,8 +95,10 @@ node; here is how to create a VG named `my-vg`:
 $ sudo vgcreate --devicesfile my-vg --shared my-vg /dev/my-san-lun
 ```
 
-KubeSAN assumes that it will be the sole owner of the shared volume group; you
-should not assume that any pre-existing data will be preserved.
+KubeSAN assumes that it will be the sole owner of the shared volume
+group; you should not assume that any pre-existing data will be
+preserved.  KubeSAN also insists that the volume group name be no
+longer than 63 bytes.
 
 Other shared storage solutions, such as an NFS file mounted through
 loopback, or even /dev/nbdX pointing to a common NBD server, will

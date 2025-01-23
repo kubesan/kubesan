@@ -74,17 +74,17 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 		return nil, err
 	}
 
-	volumeContents, err := getVolumeContents(req)
-	if err != nil {
-		return nil, err
-	}
-
 	accessModes, err := getVolumeAccessModes(req.VolumeCapabilities)
 	if err != nil {
 		return nil, err
 	}
 
 	capacity, limit, err := validateCapacity(req.CapacityRange, defaultExtentSize)
+	if err != nil {
+		return nil, err
+	}
+
+	volumeContents, err := s.getVolumeContents(ctx, req, lvmVolumeGroup, limit, volumeType)
 	if err != nil {
 		return nil, err
 	}
@@ -207,27 +207,96 @@ func getVolumeType(capabilities []*csi.VolumeCapability) (*v1alpha1.VolumeType, 
 	return volumeType, nil
 }
 
-func getVolumeContents(req *csi.CreateVolumeRequest) (*v1alpha1.VolumeContents, error) {
+// Determine what to populate the volume with, and ensure that any source
+// exists in vgName, is not larger than any non-zero limit, and that we
+// are not attempting to convert a block into a filesystem.
+func (s *ControllerServer) getVolumeContents(ctx context.Context, req *csi.CreateVolumeRequest, vgName string, limit int64, volumeType *v1alpha1.VolumeType) (*v1alpha1.VolumeContents, error) {
 	volumeContents := &v1alpha1.VolumeContents{}
 
 	if req.VolumeContentSource == nil {
+		// Empty source
 		volumeContents.ContentsType = v1alpha1.VolumeContentsTypeEmpty
+
 	} else if source := req.VolumeContentSource.GetVolume(); source != nil {
-		if _, err := validate.ValidateVolumeID(source.VolumeId); err != nil {
+		// Volume source
+		name, err := validate.ValidateVolumeID(source.VolumeId)
+		if err != nil {
 			return nil, err
+		}
+		volume := &v1alpha1.Volume{}
+		err = s.client.Get(ctx, name, volume)
+		// TODO: Once we get Conditions["Error"] reporting working,
+		// it may be nicer to do these checks only in the manager
+		// code, instead of duplicating them here as fail-fast checks.
+		switch {
+		case errors.IsNotFound(err):
+			return nil, status.Error(codes.NotFound, "source volume does not exist")
+
+		case err != nil:
+			return nil, status.Errorf(codes.InvalidArgument, "unable to inspect source volume: %v", err)
+
+		case volume.Spec.VgName != vgName:
+			// TODO We could possibly relax this for multiple VGs that share a common node in topology
+			return nil, status.Error(codes.InvalidArgument, "source volume does not live in same volume group as destination")
+
+		case volumeType.Filesystem != nil:
+			return nil, status.Error(codes.InvalidArgument, "cannot create filesystem volume from a block device source")
+
+		case volume.Spec.Type.Filesystem != nil:
+			// TODO For now, we simply refuse to support cloning
+			// a block from a filesystem. It might be possible to
+			// support this in the future, though.
+			return nil, status.Error(codes.InvalidArgument, "cannot create block device from a filesystem source")
+
+		case volume.Spec.Mode == v1alpha1.VolumeModeLinear:
+			// Cloning a linear volume is not possible.
+			return nil, status.Error(codes.InvalidArgument, "cannot clone a linear volume")
+
+		case !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable):
+			return nil, status.Error(codes.NotFound, "source volume is not ready yet")
+
+		case limit > 0 && volume.Status.SizeBytes > limit:
+			return nil, status.Errorf(codes.OutOfRange, "destination capacity is insufficient to accommodate source size %d", volume.Status.SizeBytes)
 		}
 		volumeContents.ContentsType = v1alpha1.VolumeContentsTypeCloneVolume
 		volumeContents.CloneVolume = &v1alpha1.VolumeContentsCloneVolume{
 			SourceVolume: source.VolumeId,
 		}
+
 	} else if source := req.VolumeContentSource.GetSnapshot(); source != nil {
-		if _, err := validate.ValidateSnapshotID(source.SnapshotId); err != nil {
+		// Snapshot source
+		name, err := validate.ValidateSnapshotID(source.SnapshotId)
+		if err != nil {
 			return nil, err
+		}
+		snapshot := &v1alpha1.Snapshot{}
+		err = s.client.Get(ctx, name, snapshot)
+		switch {
+		case errors.IsNotFound(err):
+			return nil, status.Error(codes.NotFound, "source snapshot does not exist")
+
+		case err != nil:
+			return nil, status.Errorf(codes.InvalidArgument, "unable to inspect source snapshot: %v", err)
+
+		case snapshot.Spec.VgName != vgName:
+			// TODO We could possibly relax this for multiple VGs that share a common node in topology
+			return nil, status.Error(codes.InvalidArgument, "source snapshot does not live in same volume group as destination")
+
+		case volumeType.Filesystem != nil:
+			// TODO This is true as long as Snapshots can only be created from block devices
+			return nil, status.Error(codes.InvalidArgument, "cannot create filesystem volume from a block device source")
+
+		case !meta.IsStatusConditionTrue(snapshot.Status.Conditions, v1alpha1.SnapshotConditionAvailable):
+			return nil, status.Error(codes.NotFound, "source snapshot is not ready yet")
+
+		case limit > 0 && snapshot.Status.SizeBytes > limit:
+			return nil, status.Errorf(codes.OutOfRange, "destination capacity is insufficient to accommodate source size %d", snapshot.Status.SizeBytes)
 		}
 		volumeContents.ContentsType = v1alpha1.VolumeContentsTypeCloneSnapshot
 		volumeContents.CloneSnapshot = &v1alpha1.VolumeContentsCloneSnapshot{
 			SourceSnapshot: source.SnapshotId,
 		}
+
 	} else {
 		return nil, status.Error(codes.InvalidArgument, "unsupported volume content source")
 	}

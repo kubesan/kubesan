@@ -75,6 +75,7 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 			Namespace: config.Namespace,
 		},
 		Spec: v1alpha1.SnapshotSpec{
+			VgName:       volume.Spec.VgName,
 			SourceVolume: req.SourceVolumeId,
 		},
 	}

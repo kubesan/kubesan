@@ -73,13 +73,15 @@ spec:
                 description: |-
                   The short name of the LV (Volume or Snapshot) to export, write-once
                   at creation.
-                pattern: '[-a-z0-9]+'
+                maxLength: 63
+                pattern: ^[a-z0-9][-a-z0-9]*$
                 type: string
                 x-kubernetes-validations:
                 - rule: oldSelf==self
               host:
                 description: The node hosting the export. Write-once at creation.
-                pattern: '[-_.a-z0-9]+'
+                maxLength: 253
+                pattern: ^[a-z0-9][-.a-z0-9]*$
                 type: string
                 x-kubernetes-validations:
                 - rule: oldSelf==self
@@ -87,7 +89,8 @@ spec:
                 description: |-
                   The "/dev/..." path of the export, write-once at creation, then
                   cleared to trigger server stop.
-                pattern: ^(|/dev/[-_/a-z0-9]+)$
+                maxLength: 128
+                pattern: ^(|/dev/[-_+/a-z0-9]+)$
                 type: string
                 x-kubernetes-validations:
                 - rule: oldSelf==self
@@ -180,11 +183,13 @@ spec:
                   as a witness when waiting for status to change.
                 format: int64
                 type: integer
+                x-kubernetes-validations:
+                - rule: self>=oldSelf
               uri:
                 description: |-
                   NBD URI for connecting to the NBD export, using IP address.
                   write-once when Conditions["Available"] is first set
-                pattern: nbd://[0-9a-f:.]+/[-a-z0-9]+
+                pattern: ^nbd://[0-9a-f:.]+/[a-z][-a-z0-9]*$
                 type: string
                 x-kubernetes-validations:
                 - rule: oldSelf==self
