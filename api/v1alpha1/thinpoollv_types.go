@@ -70,8 +70,8 @@ type ThinLvSpec struct {
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	ReadOnly bool `json:"readOnly"`
 
-	// Must be positive and a multiple of 512. May be updated at will, but the LVM thin LV's actual size will only
-	// ever increase, except when marking for deletion.
+	// Should be 0 if readOnly is true or if marking for deletion, otherwise, it is positive and a multiple of 512.
+	// May be updated at will, but the LVM thin LV's actual size will only ever increase.
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:MultipleOf=512
 	SizeBytes int64 `json:"sizeBytes"`
