@@ -90,16 +90,18 @@ func (r *ThinPoolLvNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// only continue when this node is the active node and we're not undergoing deletion
 
-	if thinPoolLv.DeletionTimestamp != nil || thinPoolLv.Spec.ActiveOnNode != config.LocalNodeName {
+	if (thinPoolLv.DeletionTimestamp != nil && len(thinPoolLv.Status.ThinLvs) == 0) || thinPoolLv.Spec.ActiveOnNode != config.LocalNodeName {
 		log.Info("ThinPoolLv is not active on this node or is being deleted")
 		return ctrl.Result{}, nil
 	}
 
 	log.Info("ThinPoolLv is active on this node, proceeding")
 
-	err = r.reconcileThinLvCreation(ctx, thinPoolLv)
-	if err != nil {
-		return ctrl.Result{}, err
+	if thinPoolLv.DeletionTimestamp == nil {
+		err = r.reconcileThinLvCreation(ctx, thinPoolLv)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	err = r.reconcileThinLvActivations(ctx, thinPoolLv)
@@ -117,7 +119,7 @@ func (r *ThinPoolLvNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 // Returns true if the thin-pool should be active
 func (r *ThinPoolLvNodeReconciler) reconcileThinPoolLvActivation(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv) (bool, error) {
-	thinPoolLvShouldBeActive := thinPoolLv.DeletionTimestamp == nil &&
+	thinPoolLvShouldBeActive :=
 		kubesanslices.Any(thinPoolLv.Spec.ThinLvs, func(spec v1alpha1.ThinLvSpec) bool { return spec.State.Name == v1alpha1.ThinLvSpecStateNameActive })
 
 	if thinPoolLvShouldBeActive {
