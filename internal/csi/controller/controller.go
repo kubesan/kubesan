@@ -32,6 +32,7 @@ func (s *ControllerServer) ControllerGetCapabilities(ctx context.Context, req *c
 		csi.ControllerServiceCapability_RPC_LIST_VOLUMES,
 		csi.ControllerServiceCapability_RPC_VOLUME_CONDITION,
 		csi.ControllerServiceCapability_RPC_GET_VOLUME,
+		csi.ControllerServiceCapability_RPC_LIST_SNAPSHOTS,
 	}
 
 	csiCaps := make([]*csi.ControllerServiceCapability, len(caps))
