@@ -8,13 +8,11 @@ import (
 	"math"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -384,7 +382,7 @@ func validateCapabilities(volume *v1alpha1.Volume, capabilities []*csi.VolumeCap
 	// A subset of access modes is still okay
 	accessModes, err := getVolumeAccessModes(capabilities)
 	if err != nil {
-		return "incompatible access modes"
+		return "incomptible access modes"
 	}
 	for _, mode := range accessModes {
 		if !slices.Contains(volume.Spec.AccessModes, mode) {
@@ -593,127 +591,4 @@ func (s *ControllerServer) ControllerGetVolume(ctx context.Context, req *csi.Con
 			PublishedNodeIds: volume.Status.AttachedToNodes,
 		},
 	}, nil
-}
-
-func (s *ControllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
-
-	// retrieve all snapshots
-	snapshotList := &v1alpha1.SnapshotList{}
-	if err := s.client.Client.List(ctx, snapshotList); err != nil {
-		return nil, err
-	}
-
-	// validate pagination inputs
-	startingToken, err := strconv.Atoi(req.StartingToken)
-	if (err != nil || startingToken < 0) && req.StartingToken != "" {
-		return nil, status.Error(codes.Aborted, "StartingToken does not match a token returned by an earlier call")
-	} else if startingToken >= len(snapshotList.Items) && len(snapshotList.Items) != 0 {
-		return nil, status.Error(codes.Aborted, "No snapshot at StartingToken")
-	}
-
-	maxEntries := int(req.MaxEntries)
-	if maxEntries < 0 {
-		return nil, status.Error(codes.InvalidArgument, "MaxEntries cannot be negative")
-	} else if maxEntries == 0 {
-		maxEntries = len(snapshotList.Items)
-	}
-
-	// At present, we don't use secrets, so this should be empty.
-	if len(req.Secrets) > 0 {
-		return nil, status.Error(codes.InvalidArgument, "unexpected secrets")
-	}
-
-	// return snapshot with specific snapshot ID or empty entry list if not found
-	if req.SnapshotId != "" {
-		if req.StartingToken != "" {
-			return nil, status.Error(codes.Aborted, "StartingToken should be empty if SnapshotId is specified")
-		}
-
-		namespacedName, err := validate.ValidateSnapshotID(req.SnapshotId)
-		if err != nil {
-			return nil, err
-		}
-
-		// retrieve snapshot with SnapshotId
-		snapshot := &v1alpha1.Snapshot{}
-		if err := s.client.Get(ctx, namespacedName, snapshot); err != nil {
-			if errors.IsNotFound(err) {
-				return &csi.ListSnapshotsResponse{}, nil
-			}
-			return nil, err
-		}
-
-		entry := getListSnapshotEntry(snapshot, req.SourceVolumeId)
-		if entry == nil {
-			return nil, status.Error(codes.NotFound, "Snapshot not available")
-		}
-
-		return &csi.ListSnapshotsResponse{
-			Entries: []*csi.ListSnapshotsResponse_Entry{
-				entry,
-			},
-		}, nil
-	}
-
-	// sort by SourceVolume to ensure consistency between calls
-	slices.SortFunc(snapshotList.Items, func(snapA, snapB v1alpha1.Snapshot) int {
-		cmp := strings.Compare(snapA.Spec.SourceVolume, snapB.Spec.SourceVolume)
-		if cmp == 0 {
-			cmp = strings.Compare(snapA.Name, snapB.Name)
-		}
-
-		return cmp
-	})
-
-	listSnapEntries := make([]*csi.ListSnapshotsResponse_Entry, 0, len(snapshotList.Items)-startingToken)
-	nextToken := ""
-
-	// if SourceVolumeId is specified, return matching volumes
-	// otherwise return volumes from global list
-	counter := 0
-	for i := startingToken; i < len(snapshotList.Items); i++ {
-		entry := getListSnapshotEntry(&snapshotList.Items[i], req.SourceVolumeId)
-		if entry != nil {
-			if counter == maxEntries {
-				nextToken = strconv.Itoa(counter)
-				break
-			}
-
-			listSnapEntries = append(listSnapEntries, entry)
-			counter++
-		}
-	}
-
-	// if startingToken is not at the beginning of the list, that implies that there exists a match at startingToken
-	if len(listSnapEntries) == 0 && startingToken != 0 {
-		return nil, status.Error(codes.Aborted, "StartingToken no longer valid")
-	}
-
-	return &csi.ListSnapshotsResponse{
-		Entries:   listSnapEntries,
-		NextToken: nextToken,
-	}, nil
-}
-
-// Helper function for ListSnapshots() that returns a populated ListSnapshotsResponse_Entry.
-// Filters entries based on whether a sourceVolume was provided
-func getListSnapshotEntry(snapshot *v1alpha1.Snapshot, sourceVolume string) *csi.ListSnapshotsResponse_Entry {
-	cond := meta.FindStatusCondition(snapshot.Status.Conditions, v1alpha1.SnapshotConditionAvailable)
-	if cond == nil {
-		return nil
-	}
-
-	if sourceVolume != "" && sourceVolume != snapshot.Spec.SourceVolume {
-		return nil
-	}
-
-	return &csi.ListSnapshotsResponse_Entry{
-		Snapshot: &csi.Snapshot{
-			SizeBytes:      snapshot.Status.SizeBytes,
-			SnapshotId:     snapshot.Name,
-			SourceVolumeId: snapshot.Spec.SourceVolume,
-			CreationTime:   timestamppb.New(cond.LastTransitionTime.Time),
-			ReadyToUse:     true,
-		},
-	}
 }
