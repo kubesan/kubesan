@@ -2,7 +2,8 @@
 
 set -e
 
-env | sort
+# Dump the environment, but escaped into one line per variable
+env -0 | sed -z 's/\\/\\\\/g; s/\n/\\n/g' | tr '\0' '\n' | sort
 
 # for both push events and MR within the same repository
 # CI_COMMIT_SHA contains the commit that needs to be monitored
