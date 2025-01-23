@@ -9,7 +9,7 @@ metadata:
 rules:
   - apiGroups: [kubesan.gitlab.io]
     resources: [volumes]
-    verbs: [get, list, watch, create, delete]
+    verbs: [get, list, watch, create, update, delete]
   - apiGroups: [kubesan.gitlab.io]
     resources: [snapshots]
     verbs: [get, list, watch, create, delete]
