@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
+# This kustomization deploys a stable release of KubeSAN into an
+# OpenShift cluster that already has an openshift-storage namespace
+# (for example, if you previously installed the LVMS operator).
+
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
