@@ -44,7 +44,7 @@ func RunClusterControllers() error {
 		},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "dbe08e41.kubesan.gitlab.io",
+		LeaderElectionID:       "dbe08e41." + config.Domain,
 		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
 		// when the Manager ends. This requires the binary to immediately end when the
 		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly

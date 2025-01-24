@@ -15,15 +15,9 @@ import (
 )
 
 const (
-	Domain = "kubesan.gitlab.io"
-
 	// + Don't forget to update deploy/kubernetes/kustomization.yaml
 	// + when bumping this version string for a release.
 	Version = "v0.10.0"
-
-	Finalizer = Domain + "/finalizer"
-
-	CloneSourceLabel = Domain + "/cloneSource"
 
 	CsiSocketPath = "/run/csi/socket"
 
@@ -39,6 +33,10 @@ const (
 )
 
 var (
+	Domain           = v1alpha1.Group
+	Finalizer        = Domain + "/finalizer"
+	CloneSourceLabel = Domain + "/cloneSource"
+
 	LocalNodeName = os.Getenv("NODE_NAME")
 	PodName       = os.Getenv("POD_NAME")
 	PodIP         = os.Getenv("POD_IP")
