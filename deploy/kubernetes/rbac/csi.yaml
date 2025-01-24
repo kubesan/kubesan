@@ -2,10 +2,11 @@
 
 ---
 # used by package internal/csi/controller
-kind: ClusterRole
+kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: kubesan-csi-controller
+  namespace: kubesan-system
 rules:
   - apiGroups: [kubesan.gitlab.io]
     resources: [volumes]
@@ -15,13 +16,14 @@ rules:
     verbs: [get, list, watch, create, delete]
 
 ---
-kind: ClusterRoleBinding
+kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: kubesan-csi-controller
+  namespace: kubesan-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
+  kind: Role
   name: kubesan-csi-controller
 subjects:
   - kind: ServiceAccount
@@ -200,23 +202,25 @@ subjects:
 
 ---
 # used by package internal/csi/node
-kind: ClusterRole
+kind: Role
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: kubesan-csi-node
+  namespace: kubesan-system
 rules:
   - apiGroups: [kubesan.gitlab.io]
     resources: [volumes]
     verbs: [get, list, watch, update, patch]
 
 ---
-kind: ClusterRoleBinding
+kind: RoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: kubesan-csi-node
+  namespace: kubesan-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
+  kind: Role
   name: kubesan-csi-node
 subjects:
   - kind: ServiceAccount
