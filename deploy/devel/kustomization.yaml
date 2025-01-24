@@ -1,0 +1,101 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# This kustomization deploys a development version of KubeSAN under an
+# alternative Group, so that it should operate independently of any
+# production KubeSAN already on the same OpenShift cluster. Be sure
+# that the namespace and group chosen here are not already in use.
+# Make sure that when using two deployments with different APIs, you
+# MUST be sure that the image loaded into the pods for each deployment
+# are consistent with the CRDs installed by that deployment.
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Override this, either here or in another kustomization.yaml that
+# includes this one as a resource, so that images match this deploy.
+images:
+  - name: quay.io/kubesan/kubesan
+    newName: quay.io/kubesan/kubesan
+    newTag: devel
+
+namespace: kubesan-devel
+
+resources:
+  - ../openshift
+  - ../namespace
+
+# This configmap lets us do replacements.  It can be deleted after deployment.
+configMapGenerator:
+  - name: devel-configmap
+    literals:
+      - group-start=devel.kubesan
+      - group=devel.kubesan.gitlab.io
+
+replacements:
+  - source:
+      kind: SecurityContextConstraints
+      fieldPath: metadata.namespace
+    targets:
+      - select:
+          kind: SecurityContextConstraints
+        options:
+          delimiter: ':'
+          index: 2
+        fieldPaths:
+          - users.*
+  - source:
+      kind: ConfigMap
+      name: devel-configmap
+      fieldPath: data.group-start
+    targets:
+      - select:
+          kind: CustomResourceDefinition
+        options:
+          delimiter: '.'
+          index: 1
+        fieldPaths:
+          - metadata.name
+  - source:
+      kind: ConfigMap
+      name: devel-configmap
+      fieldPath: data.group
+    targets:
+      - select:
+          kind: CSIDriver
+        fieldPaths:
+          - metadata.name
+      - select:
+          kind: CustomResourceDefinition
+        fieldPaths:
+          - spec.group
+      - select:
+          kind: Role
+          name: kubesan-csi-controller
+        fieldPaths:
+          - rules.*.apiGroups.0
+      - select:
+          kind: Role
+          name: kubesan-csi-node
+        fieldPaths:
+          - rules.*.apiGroups.0
+      - select:
+          kind: Role
+          name: manager-role
+        fieldPaths:
+          - rules.*.apiGroups.0
+      - select:
+          kind: ClusterRole
+          name: aggregate-kubesan-view
+        fieldPaths:
+          - rules.*.apiGroups.0
+      - select:
+          kind: DaemonSet
+        fieldPaths:
+          - spec.template.spec.containers.0.env.[name=KUBESAN_GROUP].value
+      - select:
+          kind: Deployment
+        fieldPaths:
+          - spec.template.spec.containers.0.env.[name=KUBESAN_GROUP].value
+
+transformers:
+  - cluster_resource_prefix.yaml
