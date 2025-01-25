@@ -44,7 +44,7 @@ spec:
         - --csi.testvolumeexpandsize=$((128*1024*1024))
         - --ginkgo.v
         - --ginkgo.seed=1
-#        - --ginkgo.fail-fast
+        - --ginkgo.fail-fast
       volumeMounts:
         - name: drivers
           mountPath: /var/lib/kubelet/plugins
@@ -71,19 +71,11 @@ EOF
 
 fail=0
 ksan-stage "Waiting for csi-sanity results..."
-ksan-wait-for-pod-to-succeed 600 csi-sanity || fail=$?
-kubectl delete configmap csi-parameters
+ksan-wait-for-pod-to-succeed $((15*60)) csi-sanity || fail=$?
 kubectl logs pods/csi-sanity
 
-# TODO fix remaining issues, then hard-fail this test if csi-sanity fails.
-# For now, if we got at least one pass in the final line of the logged output,
-# then mark this overall test as skipped instead of failed.
-pattern="[1-9][0-9]* Pass"
-if [[ $fail != 0 &&
-      "$( kubectl logs --tail=1 pods/csi-sanity )" =~ $pattern ]]; then
-    fail=77
-    echo "SKIP: partial csi-sanity failures are still expected"
-fi
+kubectl delete configmap csi-parameters
+kubectl delete pod csi-sanity
 
 # Test files are sourced as part of a bigger framework where there is
 # other cleanup code to be run if this file completes without exiting.
