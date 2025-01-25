@@ -560,7 +560,7 @@ func (s *ControllerServer) ListVolumes(ctx context.Context, req *csi.ListVolumes
 
 	// retrieve all volumes
 	volumeList := &v1alpha1.VolumeList{}
-	if err := s.client.Client.List(ctx, volumeList); err != nil {
+	if err := s.client.List(ctx, volumeList); err != nil {
 		return nil, err
 	}
 

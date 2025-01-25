@@ -174,8 +174,9 @@ func (s *ControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSn
 func (s *ControllerServer) ListSnapshots(ctx context.Context, req *csi.ListSnapshotsRequest) (*csi.ListSnapshotsResponse, error) {
 
 	// retrieve all snapshots
+	// TODO consider using client.MatchingFields for faster listing when req.SourceVolumeId is set
 	snapshotList := &v1alpha1.SnapshotList{}
-	if err := s.client.Client.List(ctx, snapshotList); err != nil {
+	if err := s.client.List(ctx, snapshotList); err != nil {
 		return nil, err
 	}
 
