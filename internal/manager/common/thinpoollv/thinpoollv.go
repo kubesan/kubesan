@@ -78,7 +78,7 @@ func thinPoolLvNeedsActivation(thinPoolLv *v1alpha1.ThinPoolLv) bool {
 
 		// extending the thin LV requires that the ThinPoolLv be active on a node
 
-		if thinLvSpec.SizeBytes > thinLvStatus.SizeBytes {
+		if thinLvSpec.SizeBytes > thinLvStatus.SizeBytes && !thinLvSpec.ReadOnly {
 			return true
 		}
 	}
