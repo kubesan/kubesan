@@ -72,6 +72,11 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 		return nil, err
 	}
 
+	wipePolicy, err := getWipePolicy(req.Parameters)
+	if err != nil {
+		return nil, err
+	}
+
 	volumeType, err := getVolumeType(req.VolumeCapabilities)
 	if err != nil {
 		return nil, err
@@ -117,6 +122,7 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 		Spec: v1alpha1.VolumeSpec{
 			VgName:      lvmVolumeGroup,
 			Mode:        volumeMode,
+			WipePolicy:  wipePolicy,
 			Type:        *volumeType,
 			Contents:    *volumeContents,
 			AccessModes: accessModes,
@@ -168,6 +174,18 @@ func getVolumeMode(parameters map[string]string) (v1alpha1.VolumeMode, error) {
 	}
 
 	return v1alpha1.VolumeMode(mode), nil
+}
+
+func getWipePolicy(parameters map[string]string) (v1alpha1.VolumeWipePolicy, error) {
+	switch policy := parameters["wipePolicy"]; policy {
+	case "":
+		fallthrough
+	case string(v1alpha1.VolumeWipePolicyFull):
+		return v1alpha1.VolumeWipePolicyFull, nil
+	case string(v1alpha1.VolumeWipePolicyUnsafeFast):
+		return v1alpha1.VolumeWipePolicyUnsafeFast, nil
+	}
+	return "", status.Error(codes.InvalidArgument, "invalid volume wipe policy")
 }
 
 func getVolumeType(capabilities []*csi.VolumeCapability) (*v1alpha1.VolumeType, error) {
@@ -503,6 +521,10 @@ func validateVolume(volume *v1alpha1.Volume, size int64, limit int64, source *v1
 		return "incompatible parameter \"mode\""
 	}
 
+	if wipePolicy, err := getWipePolicy(parameters); err != nil || wipePolicy != volume.Spec.WipePolicy {
+		return "incompatible parameter \"wipePolicy\""
+	}
+
 	return validateCapabilities(volume, capabilities)
 }
 
@@ -560,7 +582,7 @@ func (s *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *
 func copyKnownParameters(parameters map[string]string) map[string]string {
 	result := make(map[string]string, len(parameters))
 	for key, value := range parameters {
-		if key == "lvmVolumeGroup" || key == "mode" {
+		if key == "lvmVolumeGroup" || key == "mode" || key == "wipePolicy" {
 			result[key] = value
 		}
 	}
