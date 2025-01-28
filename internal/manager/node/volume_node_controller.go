@@ -26,24 +26,28 @@ import (
 	kubesanslices "gitlab.com/kubesan/kubesan/internal/common/slices"
 	"gitlab.com/kubesan/kubesan/internal/manager/common/thinpoollv"
 	"gitlab.com/kubesan/kubesan/internal/manager/common/util"
+	"gitlab.com/kubesan/kubesan/internal/manager/common/workers"
 )
 
 type VolumeNodeReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme  *runtime.Scheme
+	workers *workers.Workers
 }
 
 func SetUpVolumeNodeReconciler(mgr ctrl.Manager) error {
 	r := &VolumeNodeReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:  mgr.GetClient(),
+		Scheme:  mgr.GetScheme(),
+		workers: workers.NewWorkers(),
 	}
 
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Volume{}).
 		Owns(&v1alpha1.ThinPoolLv{}, builder.MatchEveryOwner). // for ThinBlobManager
-		Owns(&v1alpha1.NBDExport{}).
-		Complete(r)
+		Owns(&v1alpha1.NBDExport{})
+	r.workers.SetUpReconciler(b)
+	return b.Complete(r)
 }
 
 // +kubebuilder:rbac:groups=kubesan.gitlab.io,resources=volumes,verbs=get;list;watch;create;update;patch;delete,namespace=kubesan-system
@@ -268,6 +272,82 @@ func devName(volume *v1alpha1.Volume) string {
 	return "/dev/" + volume.Spec.VgName + "/" + thinpoollv.VolumeToThinLvName(volume.Name)
 }
 
+type ddWork struct {
+	targetPathOnHost string
+	sourcePathOnHost string
+}
+
+func (w *ddWork) Run(ctx context.Context) error {
+	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
+
+	log.Info("Starting to populate new volume", "sourcePathOnHost", w.sourcePathOnHost, "targetPathOnHost", w.targetPathOnHost)
+	_, err := commands.RunOnHostContext(
+		ctx,
+		"dd",
+		"if="+w.sourcePathOnHost,
+		"of="+w.targetPathOnHost,
+		"bs=1M",
+		"conv=fsync,nocreat,sparse",
+	)
+	if err != nil {
+		log.Error(err, "dd failed")
+		return err
+	}
+
+	log.Info("Finished populating new volume", "sourcePathOnHost", w.sourcePathOnHost, "targetPathOnHost", w.targetPathOnHost)
+	return nil
+}
+
+func getSourcePathOnHost(volume *v1alpha1.Volume) string {
+	// Cross-VG cloning is not supported, so it's safe to use the target Volume's VG
+	vgName := volume.Spec.VgName
+	return "/dev/" + vgName + "/" + thinpoollv.VolumeToThinLvName("clone-"+volume.Name)
+}
+
+func (r *VolumeNodeReconciler) reconcileThinPopulating(ctx context.Context, volume *v1alpha1.Volume) error {
+	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
+
+	workName := "dd-" + volume.Name
+
+	if volume.DeletionTimestamp != nil {
+		log.Info("Canceling dd work due to volume deletion", "volumeName", volume.Name)
+		return r.workers.Cancel(workName) // stop dd
+	}
+
+	sourcePathOnHost := getSourcePathOnHost(volume)
+	targetPathOnHost := devName(volume)
+
+	// only run on node where data source is activated
+
+	if exists, _ := commands.PathExistsOnHost(sourcePathOnHost); !exists {
+		log.Info("Source path does not exist on host", "path", sourcePathOnHost)
+		return nil
+	}
+	if exists, _ := commands.PathExistsOnHost(targetPathOnHost); !exists {
+		log.Info("Target path does not exist on host", "path", targetPathOnHost)
+		return nil
+	}
+
+	work := &ddWork{
+		sourcePathOnHost: sourcePathOnHost,
+		targetPathOnHost: targetPathOnHost,
+	}
+	if err := r.workers.Run(workName, volume, work); err != nil {
+		return err
+	}
+
+	// signal to the cluster controller that data population is done
+
+	condition := metav1.Condition{
+		Type:    v1alpha1.VolumeConditionDataSourceCompleted,
+		Status:  metav1.ConditionTrue,
+		Reason:  "Completed",
+		Message: "population from data source completed",
+	}
+	meta.SetStatusCondition(&volume.Status.Conditions, condition)
+	return r.statusUpdate(ctx, volume)
+}
+
 func (r *VolumeNodeReconciler) reconcileThin(ctx context.Context, volume *v1alpha1.Volume) error {
 	thinPoolLv := &v1alpha1.ThinPoolLv{}
 
@@ -370,7 +450,27 @@ func (r *VolumeNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// check if already created
+	// perform data population
+
+	if meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionLvCreated) &&
+		!meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionDataSourceCompleted) {
+		var err error
+
+		switch volume.Spec.Mode {
+		case v1alpha1.VolumeModeThin:
+			err = r.reconcileThinPopulating(ctx, volume)
+		default:
+			err = errors.NewBadRequest("invalid volume mode for data population")
+		}
+
+		if _, ok := err.(*util.WatchPending); ok {
+			log.Info("reconcile waiting for Watch during data population")
+			return ctrl.Result{}, nil // wait until Watch triggers
+		}
+		return ctrl.Result{}, nil
+	}
+
+	// check if ready for operation
 
 	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable) {
 		return ctrl.Result{}, nil

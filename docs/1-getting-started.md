@@ -202,18 +202,22 @@ created (here, `my-vg`):
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
+  annotations:
+    cdi.kubevirt.io/clone-strategy: csi-clone
   name: my-san
 provisioner: kubesan.gitlab.io
 parameters:
   lvmVolumeGroup: my-vg
 ```
 
+If you are setting the `mode` parameter to `Linear`, set the StorageClass
+`cdi.kubevirt.io/clone-strategy` annotation to `copy`.
+
 If you are using OpenShift Virtualization, you must also patch the corresponding
 `StorageProfile` as follows:
 
 ```console
-$ kubectl patch storageprofile my-san --type=merge -p '{"spec": {"claimPropertySets": [{"accessModes": ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany"], "volumeMode": "Block"}, {"accessModes": ["ReadWriteOnce"], "volumeMode": "Filesystem"}], "cloneStrategy": "copy"}}'
-```
+$ kubectl patch storageprofile my-san --type=merge -p '{"spec": {"claimPropertySets": [{"accessModes": ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany"], "volumeMode": "Block"}, {"accessModes": ["ReadWriteOnce"], "volumeMode": "Filesystem"}], "cloneStrategy": "csi-clone"}}'
 
 Now you can create volumes like so:
 

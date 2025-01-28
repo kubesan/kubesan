@@ -100,7 +100,7 @@ func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeByt
 	return nil
 }
 
-func (m *LinearBlobManager) RemoveBlob(ctx context.Context, name string) error {
+func (m *LinearBlobManager) RemoveBlob(ctx context.Context, name string, owner client.Object) error {
 	// stop blkdiscard in case it's running
 	if err := m.workers.Cancel(m.blkdiscardWorkName(name)); err != nil {
 		return err
@@ -116,6 +116,26 @@ func (m *LinearBlobManager) RemoveBlob(ctx context.Context, name string) error {
 func (m *LinearBlobManager) SnapshotBlob(ctx context.Context, name string, sourceName string, owner client.Object) error {
 	// Linear volumes do not support snapshots
 	return errors.NewBadRequest("linear volumes do not support snapshots")
+}
+
+func (m *LinearBlobManager) ActivateBlobForCloneSource(ctx context.Context, name string, owner client.Object) error {
+	// Linear volumes do not support cloning
+	return errors.NewBadRequest("linear volumes do not support cloning")
+}
+
+func (m *LinearBlobManager) ActivateBlobForCloneTarget(ctx context.Context, name string, dataSrcBlobMgr BlobManager) error {
+	// Linear volumes do not support cloning
+	return errors.NewBadRequest("linear volumes do not support cloning")
+}
+
+func (m *LinearBlobManager) DeactivateBlobForCloneSource(ctx context.Context, name string, owner client.Object) error {
+	// Linear volumes do not support cloning
+	return errors.NewBadRequest("linear volumes do not support cloning")
+}
+
+func (m *LinearBlobManager) DeactivateBlobForCloneTarget(ctx context.Context, name string) error {
+	// Linear volumes do not support cloning
+	return errors.NewBadRequest("linear volumes do not support cloning")
 }
 
 // Return the actual size of the blob.

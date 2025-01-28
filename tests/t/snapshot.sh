@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-ksan-supported-modes # TODO add Thin when snapshots are implemented
+ksan-supported-modes Thin
 
 ksan-stage 'Creating volume...'
 ksan-create-rwo-volume test-pvc-1 64Mi
@@ -35,7 +35,7 @@ spec:
       storage: 64Mi
 EOF
 
-ksan-wait-for-pvc-to-be-bound 300 test-pvc-2
+ksan-wait-for-pvc-to-be-bound 60 test-pvc-2
 
 ksan-stage 'Validating volume data and independence between volumes 1 and 2...'
 
@@ -91,7 +91,7 @@ spec:
       storage: 128Mi
 EOF
 
-ksan-wait-for-pvc-to-be-bound 300 test-pvc-3
+ksan-wait-for-pvc-to-be-bound 60 test-pvc-3
 
 ksan-stage 'Validating volume data and independence between volumes 2 and 3...'
 
