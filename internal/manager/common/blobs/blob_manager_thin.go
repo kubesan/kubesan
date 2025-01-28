@@ -5,7 +5,6 @@ package blobs
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"slices"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
@@ -89,39 +88,31 @@ func (m *ThinBlobManager) createThinPoolLv(ctx context.Context, name string, siz
 // Add or update ThinLvSpec in ThinPoolLv.Spec.ThinLvs[]
 func (m *ThinBlobManager) createThinLv(ctx context.Context, oldThinPoolLv, thinPoolLv *v1alpha1.ThinPoolLv, name string, sizeBytes int64, contents *v1alpha1.ThinLvContents) error {
 	readOnly := contents.ContentsType == v1alpha1.ThinLvContentsTypeSnapshot
+	thinLvSpec := thinPoolLv.Spec.FindThinLv(name)
+	thinLvStatus := thinPoolLv.Status.FindThinLv(name)
 
-	thinlv := &v1alpha1.ThinLvSpec{
-		Name:      name,
-		Contents:  *contents,
-		ReadOnly:  readOnly,
-		SizeBytes: sizeBytes,
-		State: v1alpha1.ThinLvSpecState{
-			Name: v1alpha1.ThinLvSpecStateNameInactive,
-		},
-	}
-
-	// update resource if Spec.ThinLvs[] changed
-
-	old := thinPoolLv.Spec.FindThinLv(name)
-	if old == nil {
-		thinPoolLv.Spec.ThinLvs = append(thinPoolLv.Spec.ThinLvs, *thinlv)
-	} else {
-		thinlv.State = old.State // keep the current state
-
-		if reflect.DeepEqual(old, thinlv) {
-			return nil // no change
+	if thinLvSpec == nil {
+		thinLvSpec = &v1alpha1.ThinLvSpec{
+			Name:      name,
+			Contents:  *contents,
+			ReadOnly:  readOnly,
+			SizeBytes: sizeBytes,
+			State: v1alpha1.ThinLvSpecState{
+				Name: v1alpha1.ThinLvSpecStateNameInactive,
+			},
 		}
-
-		*old = *thinlv
+		thinPoolLv.Spec.ThinLvs = append(thinPoolLv.Spec.ThinLvs, *thinLvSpec)
+	} else if thinLvStatus == nil || sizeBytes > thinLvStatus.SizeBytes {
+		thinLvSpec.SizeBytes = sizeBytes
 	}
 
 	return thinpoollv.UpdateThinPoolLv(ctx, m.client, oldThinPoolLv, thinPoolLv)
 }
 
-// Is the thin LV listed in Status.ThinLvs[] with the correct size?
+// See if the thin LV is listed in Status.ThinLvs[] with sufficient size.
 func (m *ThinBlobManager) checkThinLvExists(thinPoolLv *v1alpha1.ThinPoolLv, name string, sizeBytes int64) bool {
 	thinLvStatus := thinPoolLv.Status.FindThinLv(name)
-	return thinLvStatus != nil && thinLvStatus.SizeBytes == sizeBytes
+	return thinLvStatus != nil && thinLvStatus.SizeBytes >= sizeBytes
 }
 
 // Is the thin LV absent from Status.ThinLvs[] or marked as removed?
@@ -155,6 +146,7 @@ func (m *ThinBlobManager) forgetRemovedThinLv(ctx context.Context, thinPoolLv *v
 	return nil // not found, treat as already deleted
 }
 
+// Create or expand a thin volume blob within the manager's pool.
 func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64, owner client.Object) error {
 	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
 
@@ -186,10 +178,6 @@ func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes
 		return err
 	}
 
-	// TODO recreate if size does not match. This handles the case where a
-	// blob was partially created and then reconciled again with a
-	// different size. A blob must never be recreated after volume creation
-	// has completed since that could lose data!
 	return err
 }
 
@@ -243,13 +231,15 @@ func (m *ThinBlobManager) SnapshotBlob(ctx context.Context, name string, sourceN
 		Snapshot: &v1alpha1.ThinLvContentsSnapshot{
 			SourceThinLvName: sourceThinLv.Name,
 		}}
-	err = m.createThinLv(ctx, oldThinPoolLv, thinPoolLv, thinLvName, sourceThinLv.SizeBytes, contents)
+	// Snapshots are sized at the time of lvcreate, so we don't need
+	// to specify a size in the spec.
+	err = m.createThinLv(ctx, oldThinPoolLv, thinPoolLv, thinLvName, 0, contents)
 	if err != nil {
 		log.Error(err, "SnapshotBlob createThinLv failed")
 		return err
 	}
 
-	if !m.checkThinLvExists(thinPoolLv, thinLvName, sourceThinLv.SizeBytes) {
+	if !m.checkThinLvExists(thinPoolLv, thinLvName, 0) {
 		return util.NewWatchPending("waiting for blob creation")
 	}
 	// TODO propagate back errors
@@ -466,4 +456,15 @@ func (m *ThinBlobManager) DeactivateBlobForCloneTarget(ctx context.Context, name
 
 func (m *ThinBlobManager) GetPath(name string) string {
 	return dm.GetDevicePath(name)
+}
+
+// Thin blobs can be expanded online.
+func (m *ThinBlobManager) ExpansionMustBeOffline() bool {
+	return false
+}
+
+// If the blob is staged, the active node controller will update size.  The
+// cluster controller only needs to step in when the blob is offline.
+func (m *ThinBlobManager) SizeNeedsCheck(staged bool) bool {
+	return !staged
 }

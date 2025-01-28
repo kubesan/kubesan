@@ -9,7 +9,7 @@ metadata:
 rules:
   - apiGroups: [kubesan.gitlab.io]
     resources: [volumes]
-    verbs: [get, list, watch, create, delete]
+    verbs: [get, list, watch, create, update, delete]
   - apiGroups: [kubesan.gitlab.io]
     resources: [snapshots]
     verbs: [get, list, watch, create, delete]
@@ -155,6 +155,44 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: kubesan-csi-health-monitor
+subjects:
+  - kind: ServiceAccount
+    name: csi-controller-plugin
+    namespace: kubesan-system
+
+---
+# used by image k8s.gcr.io/sig-storage/csi-resizer
+# See https://github.com/kubernetes-csi/external-resizer/blob/master/deploy/kubernetes/rbac.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: kubesan-csi-resizer
+rules:
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims/status"]
+    verbs: ["patch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["list", "watch", "create", "update", "patch"]
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: kubesan-csi-resizer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kubesan-csi-resizer
 subjects:
   - kind: ServiceAccount
     name: csi-controller-plugin

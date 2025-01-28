@@ -30,6 +30,10 @@ spec:
       jsonPath: .spec.vgName
       name: VG
       type: string
+    - description: '''Time since resource was created'''
+      jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     - description: '''Time since pool last changed activation status'''
       jsonPath: .status.conditions[?(@.type=="Active")].lastTransitionTime
       name: Activity
@@ -120,8 +124,8 @@ spec:
                       - rule: oldSelf==self
                     sizeBytes:
                       description: |-
-                        Must be positive and a multiple of 512. May be updated at will, but the LVM thin LV's actual size will only
-                        ever increase, except when marking for deletion.
+                        Should be 0 if readOnly is true or if marking for deletion, otherwise, it is positive and a multiple of 512.
+                        May be updated at will, but the LVM thin LV's actual size will only ever increase.
                       format: int64
                       minimum: 0
                       multipleOf: 512

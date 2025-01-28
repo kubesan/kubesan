@@ -8,3 +8,4 @@ provisioner: kubesan.gitlab.io
 parameters:
   lvmVolumeGroup: kubesan-vg
   mode: @@MODE@@
+allowVolumeExpansion: true

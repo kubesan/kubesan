@@ -18,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
@@ -663,5 +664,78 @@ func (s *ControllerServer) ControllerGetVolume(ctx context.Context, req *csi.Con
 			},
 			PublishedNodeIds: volume.Status.AttachedToNodes,
 		},
+	}, nil
+}
+
+// Expand the size of a volume.
+func (s *ControllerServer) ControllerExpandVolume(ctx context.Context, req *csi.ControllerExpandVolumeRequest) (*csi.ControllerExpandVolumeResponse, error) {
+	// validate request
+	namespacedName, err := validate.ValidateVolumeID(req.VolumeId)
+	if err != nil {
+		return nil, err
+	}
+
+	capacity, _, err := validateCapacity(req.CapacityRange, defaultExtentSize)
+	if err != nil {
+		return nil, err
+	}
+
+	// At present, we don't use secrets, so this should be empty.
+	if len(req.Secrets) > 0 {
+		return nil, status.Error(codes.InvalidArgument, "unexpected secrets")
+	}
+
+	if req.VolumeCapability != nil {
+		if err := validate.ValidateVolumeCapability(req.VolumeCapability); err != nil {
+			return nil, err
+		}
+	}
+
+	// lookup volume
+	volume := &v1alpha1.Volume{}
+	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := s.client.Get(ctx, namespacedName, volume); err != nil {
+			if errors.IsNotFound(err) {
+				return status.Error(codes.NotFound, "volume does not exist")
+			}
+			return err
+		}
+
+		if req.VolumeCapability != nil {
+			if msg := validateCapabilities(volume, []*csi.VolumeCapability{req.VolumeCapability}); msg != "" {
+				return status.Error(codes.InvalidArgument, msg)
+			}
+		}
+
+		if volume.Spec.Mode == v1alpha1.VolumeModeLinear && len(volume.Spec.AttachToNodes)+len(volume.Status.AttachedToNodes) > 0 {
+			return status.Error(codes.FailedPrecondition, "linear volume can only be expanded offline")
+		}
+
+		if volume.Spec.Type.Filesystem != nil {
+			return status.Error(codes.Unimplemented, "filesystem expansion not implemented yet")
+		}
+
+		if capacity > volume.Spec.SizeBytes {
+			volume.Spec.SizeBytes = capacity
+			if err := s.client.Update(ctx, volume); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	err = s.client.WatchVolumeUntil(ctx, volume, func() bool {
+		return capacity <= volume.Status.SizeBytes
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &csi.ControllerExpandVolumeResponse{
+		CapacityBytes:         volume.Status.SizeBytes,
+		NodeExpansionRequired: false,
 	}, nil
 }

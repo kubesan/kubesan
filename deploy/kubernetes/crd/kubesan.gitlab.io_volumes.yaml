@@ -34,7 +34,11 @@ spec:
       name: Path
       priority: 1
       type: string
-    - description: '''Time since volume was available'''
+    - description: '''Time since resource was created'''
+      jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    - description: '''Time since last volume creation or expansion'''
       jsonPath: .status.conditions[?(@.type=="Available")].lastTransitionTime
       name: Available
       type: date

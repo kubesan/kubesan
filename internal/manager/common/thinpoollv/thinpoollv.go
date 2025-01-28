@@ -78,7 +78,7 @@ func thinPoolLvNeedsActivation(thinPoolLv *v1alpha1.ThinPoolLv) bool {
 
 		// extending the thin LV requires that the ThinPoolLv be active on a node
 
-		if thinLvSpec.SizeBytes > thinLvStatus.SizeBytes {
+		if thinLvSpec.SizeBytes > thinLvStatus.SizeBytes && !thinLvSpec.ReadOnly {
 			return true
 		}
 	}
@@ -159,6 +159,9 @@ func UpdateThinPoolLv(ctx context.Context, client client.Client, oldThinPoolLv, 
 		return nil
 	}
 	log.Info("Updating ThinPoolLv", "former", former, "preferred", preferred, "Spec.ActiveOnNode", thinPoolLv.Spec.ActiveOnNode, "Status.ActiveOnNode", thinPoolLv.Status.ActiveOnNode)
+	if oldThinPoolLv != nil {
+		thinPoolLv.DeepCopyInto(oldThinPoolLv)
+	}
 	return client.Update(ctx, thinPoolLv)
 }
 

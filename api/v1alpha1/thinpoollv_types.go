@@ -70,8 +70,8 @@ type ThinLvSpec struct {
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	ReadOnly bool `json:"readOnly"`
 
-	// Must be positive and a multiple of 512. May be updated at will, but the LVM thin LV's actual size will only
-	// ever increase, except when marking for deletion.
+	// Should be 0 if readOnly is true or if marking for deletion, otherwise, it is positive and a multiple of 512.
+	// May be updated at will, but the LVM thin LV's actual size will only ever increase.
 	// +kubebuilder:validation:Minimum=0
 	// +kubebuilder:validation:MultipleOf=512
 	SizeBytes int64 `json:"sizeBytes"`
@@ -222,6 +222,7 @@ type ThinLvStatusStateActive struct {
 // +kubebuilder:resource:scope=Namespaced,shortName=tp;tps;pool;pools,categories=kubesan
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="VG",type=string,JSONPath=`.spec.vgName`,description=`VG owning the thin pool`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`,description='Time since resource was created'
 // +kubebuilder:printcolumn:name="Activity",type=date,JSONPath=`.status.conditions[?(@.type=="Active")].lastTransitionTime`,description='Time since pool last changed activation status'
 // +kubebuilder:printcolumn:name="Node",type=string,JSONPath=`.status.activeOnNode`,description='Node where thin pool is currently active'
 // + TODO determine if there is a way to print a column "LVs" that displays the number of items in the .status.thinLvs array

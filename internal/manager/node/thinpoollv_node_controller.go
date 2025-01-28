@@ -108,8 +108,6 @@ func (r *ThinPoolLvNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	// TODO thin LV expansion
-
 	return ctrl.Result{}, nil
 }
 
@@ -270,15 +268,24 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinLvDeletion(ctx context.Context, 
 	return nil
 }
 
+// Handles both LV creation and expansion
 func (r *ThinPoolLvNodeReconciler) reconcileThinLvCreation(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv) error {
+	log := log.FromContext(ctx)
 	for i := range thinPoolLv.Spec.ThinLvs {
 		thinLvSpec := &thinPoolLv.Spec.ThinLvs[i]
+		thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvSpec.Name)
 
-		if thinPoolLv.Status.FindThinLv(thinLvSpec.Name) == nil {
-			log := log.FromContext(ctx)
+		if thinLvStatus == nil {
 			log.Info("Creating", "thin LV", thinLvSpec.Name)
 
 			err := r.createThinLv(ctx, thinPoolLv, thinLvSpec)
+			if err != nil {
+				return err
+			}
+		} else if thinLvSpec.SizeBytes > thinLvStatus.SizeBytes && !thinLvSpec.ReadOnly {
+			log.Info("Expanding", "thin LV", thinLvSpec.Name)
+
+			err := r.expandThinLv(ctx, thinPoolLv, thinLvSpec, thinLvStatus)
 			if err != nil {
 				return err
 			}
@@ -457,6 +464,33 @@ func (r *ThinPoolLvNodeReconciler) removeThinLv(_ context.Context, thinPoolLv *v
 		fmt.Sprintf("%s/%s", thinPoolLv.Spec.VgName, thinLvName),
 	)
 	return err
+}
+
+func (r *ThinPoolLvNodeReconciler) expandThinLv(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv, thinLvSpec *v1alpha1.ThinLvSpec, thinLvStatus *v1alpha1.ThinLvStatus) error {
+	log := log.FromContext(ctx)
+
+	_, err := commands.LvmLvExtendIdempotent(
+		"--devicesfile", thinPoolLv.Spec.VgName,
+		"--size", fmt.Sprintf("%db", thinLvSpec.SizeBytes),
+		thinPoolLv.Spec.VgName+"/"+thinLvSpec.Name,
+	)
+	if err != nil {
+		return err
+	}
+
+	size, err := commands.LvmSize(thinPoolLv.Spec.VgName, thinLvSpec.Name)
+	if err != nil {
+		return err
+	}
+
+	thinLvStatus.SizeBytes = size
+	if err := r.statusUpdate(ctx, thinPoolLv); err != nil {
+		return err
+	}
+
+	log.Info("Successfully expanded", "thin LV", thinLvSpec.Name)
+
+	return nil
 }
 
 func (r *ThinPoolLvNodeReconciler) statusUpdate(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv) error {
