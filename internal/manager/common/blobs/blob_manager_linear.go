@@ -5,12 +5,14 @@ package blobs
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"gitlab.com/kubesan/kubesan/internal/common/commands"
+	"gitlab.com/kubesan/kubesan/internal/common/config"
 	"gitlab.com/kubesan/kubesan/internal/manager/common/workers"
 )
 
@@ -35,6 +37,7 @@ func NewLinearBlobManager(workers *workers.Workers, vgName string) BlobManager {
 type blkdiscardWork struct {
 	vgName string
 	lvName string
+	offset int64
 }
 
 func (w *blkdiscardWork) Run(ctx context.Context) error {
@@ -42,7 +45,7 @@ func (w *blkdiscardWork) Run(ctx context.Context) error {
 	return commands.WithLvmLvActivated(w.vgName, w.lvName, func() error {
 		path := fmt.Sprintf("/dev/%s/%s", w.vgName, w.lvName)
 		log.Info("blkdiscard worker zeroing LV", "path", path)
-		_, err := commands.RunOnHostContext(ctx, "blkdiscard", "--zeroout", path)
+		_, err := commands.RunOnHostContext(ctx, "blkdiscard", "--zeroout", "--offset", strconv.FormatInt(w.offset, 10), path)
 		// To test long-running operations: _, err := commands.RunOnHostContext(ctx, "sleep", "30")
 		log.Info("blkdiscard worker finished", "path", path)
 		return err
@@ -54,7 +57,9 @@ func (m *LinearBlobManager) blkdiscardWorkName(name string) string {
 	return fmt.Sprintf("blkdiscard/%s/%s", m.vgName, name)
 }
 
+// Create or expand a blob.
 func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64, owner client.Object) error {
+	// This creates but does not resize.
 	_, err := commands.LvmLvCreateIdempotent(
 		"--devicesfile", m.vgName,
 		"--activate", "n",
@@ -68,30 +73,41 @@ func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeByt
 		return err
 	}
 
-	// TODO recreate if size does not match. This handles the case where a
-	// blob was partially created and then reconciled again with a
-	// different size. A blob must never be recreated after volume creation
-	// has completed since that could lose data!
-
 	// Linear volumes contain the previous contents of the disk, which can
 	// be an information leak if multiple users have access to the same
 	// Volume Group. Zero the LV to avoid security issues.
-	LvmLvTagZeroed := "kubesan.gitlab.io/zeroed=true"
-	hasTag, err := commands.LvmLvHasTag(m.vgName, name, LvmLvTagZeroed)
+	//
+	// We track how much of the image has been zeroed and then
+	// exposed to the user with a counter tag, in order to support
+	// image expansion.  We must never touch an offset prior to
+	// the stored value, and must never expose the image to the
+	// user while the stored value is less than the lv size.
+	LvmLvKeySafeOffset := config.Domain + "/safe-offset"
+	offset, err := commands.LvmLvGetCounter(m.vgName, name, LvmLvKeySafeOffset)
 	if err != nil {
 		return err
 	}
-	if !hasTag {
+
+	if offset < sizeBytes {
+		if _, err := commands.LvmLvExtendIdempotent(
+			"--devicesfile", m.vgName,
+			"--size", fmt.Sprintf("%db", sizeBytes),
+			m.vgName+"/"+name,
+		); err != nil {
+			return err
+		}
+
 		work := &blkdiscardWork{
 			vgName: m.vgName,
 			lvName: name,
+			offset: offset,
 		}
 		err := m.workers.Run(m.blkdiscardWorkName(name), owner, work)
 		if err != nil {
 			return err
 		}
 
-		err = commands.LvmLvAddTag(m.vgName, name, LvmLvTagZeroed)
+		_, err = commands.LvmLvUpdateCounterIfLower(m.vgName, name, LvmLvKeySafeOffset, sizeBytes)
 		if err != nil {
 			return err
 		}
