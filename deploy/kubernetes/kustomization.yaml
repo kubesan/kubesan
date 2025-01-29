@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
+# This kustomization installs KubeSAN in a bare-bones cluster.
+
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -15,8 +17,8 @@ commonLabels:
   app.kubernetes.io/version: latest
 
 resources:
+  - ../namespace
   - crd
   - csi
   - manager
-  - namespace.yaml
   - rbac

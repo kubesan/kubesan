@@ -41,6 +41,7 @@ func NewCsiK8sClient() (*CsiK8sClient, error) {
 	if err != nil {
 		return nil, err
 	}
+	k8sClient = client.NewNamespacedClient(k8sClient, config.Namespace)
 
 	volumeRestClient, err := createRestClient("Volume", cfg, httpClient)
 	if err != nil {

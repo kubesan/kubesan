@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+
+# This role allows read-only access to any RoleBinding or
+# ClusterRoleBinding that would like to be able to track (but not
+# modify) the resources that KubeSAN is using.
+
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: aggregate-kubesan-view
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+rules:
+  - apiGroups: [kubesan.gitlab.io]
+    resources: [volumes, snapshots, thinpoollvs, nbdexports]
+    verbs: [get, list, watch]

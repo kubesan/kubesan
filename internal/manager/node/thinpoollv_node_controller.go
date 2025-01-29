@@ -26,7 +26,7 @@ type ThinPoolLvNodeReconciler struct {
 
 func SetUpThinPoolLvNodeReconciler(mgr ctrl.Manager) error {
 	r := &ThinPoolLvNodeReconciler{
-		Client: mgr.GetClient(),
+		Client: client.NewNamespacedClient(mgr.GetClient(), config.Namespace),
 		Scheme: mgr.GetScheme(),
 	}
 

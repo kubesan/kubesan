@@ -25,6 +25,8 @@ spec:
           args:
             - node-controller-manager
           env:
+            - name: KUBESAN_GROUP
+              value: kubesan.gitlab.io
             - name: NODE_NAME
               valueFrom:
                 fieldRef:

@@ -29,7 +29,7 @@ type ThinPoolLvReconciler struct {
 
 func SetUpThinPoolLvReconciler(mgr ctrl.Manager) error {
 	r := &ThinPoolLvReconciler{
-		Client: mgr.GetClient(),
+		Client: client.NewNamespacedClient(mgr.GetClient(), config.Namespace),
 		Scheme: mgr.GetScheme(),
 	}
 

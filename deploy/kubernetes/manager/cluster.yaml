@@ -26,6 +26,8 @@ spec:
             - cluster-controller-manager
             - --leader-elect
           env:
+            - name: KUBESAN_GROUP
+              value: kubesan.gitlab.io
             - name: NODE_NAME
               valueFrom:
                 fieldRef:

@@ -4,6 +4,7 @@ resources:
   - csi.yaml
   - leader_election_role_binding.yaml
   - leader_election_role.yaml
+  - kubesan_view.yaml
   - role_binding.yaml
   - role.yaml
   - service_account.yaml

@@ -26,7 +26,7 @@ type SnapshotReconciler struct {
 
 func SetUpSnapshotReconciler(mgr ctrl.Manager) error {
 	r := &SnapshotReconciler{
-		Client: mgr.GetClient(),
+		Client: client.NewNamespacedClient(mgr.GetClient(), config.Namespace),
 		Scheme: mgr.GetScheme(),
 	}
 
