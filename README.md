@@ -1,5 +1,7 @@
 # The KubeSAN CSI Plugin
 
+**Status: KubeSAN is not actively developed.**
+
 KubeSAN is a [CSI] plugin for [Kubernetes] that enables you to provision
 volumes backed by a single, cluster-wide, shared block device (*e.g.*, a single
 big LUN on a SAN), exposed as a shared Volume Group under lvm2.
