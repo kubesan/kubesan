@@ -348,7 +348,6 @@ EOF
             fi
             kubectl apply -k ${temp_dir}
             sed -E "s/@@MODE@@/$mode/g" "${script_dir}/t-data/storage-class.yaml" | kubectl create -f -
-            kubectl create -f "${script_dir}/t-data/volume-snapshot-class.yaml"
         fi
 
         # If pods aren't healthy quickly, dump some logs before failing to

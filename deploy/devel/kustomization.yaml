@@ -96,6 +96,11 @@ replacements:
           kind: Deployment
         fieldPaths:
           - spec.template.spec.containers.0.env.[name=KUBESAN_GROUP].value
+      - select:
+          kind: VolumeSnapshotClass
+        fieldPaths:
+          - driver
+          - metadata.name
 
 transformers:
   - cluster_resource_prefix.yaml
