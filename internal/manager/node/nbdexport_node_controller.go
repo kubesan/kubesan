@@ -25,7 +25,7 @@ type NBDExportNodeReconciler struct {
 
 func SetUpNBDExportNodeReconciler(mgr ctrl.Manager) error {
 	r := &NBDExportNodeReconciler{
-		Client: mgr.GetClient(),
+		Client: client.NewNamespacedClient(mgr.GetClient(), config.Namespace),
 		Scheme: mgr.GetScheme(),
 	}
 

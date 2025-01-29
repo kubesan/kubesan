@@ -32,7 +32,7 @@ type VolumeReconciler struct {
 
 func SetUpVolumeReconciler(mgr ctrl.Manager) error {
 	r := &VolumeReconciler{
-		Client:  mgr.GetClient(),
+		Client:  client.NewNamespacedClient(mgr.GetClient(), config.Namespace),
 		Scheme:  mgr.GetScheme(),
 		workers: workers.NewWorkers(),
 	}
