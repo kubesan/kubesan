@@ -306,19 +306,9 @@ __run() {
 
         if (( install_kubesan )); then
             __log_cyan "Installing KubeSAN..."
-            if (( requires_snapshotter )); then
-                base_url=https://github.com/kubernetes-csi/external-snapshotter
-                snapshot_resources="
-  - ${base_url}/client/config/crd?ref=v8.2.0
-  - ${base_url}/deploy/kubernetes/snapshot-controller?ref=v8.2.0
-"
-            else
-                snapshot_resources=
-            fi
             cat >${temp_dir}/kustomization.yaml <<EOF
 resources:
   - $(realpath --relative-to=${temp_dir} ${repo_root})/deploy/kubernetes
-${snapshot_resources}
 images:
   - name: quay.io/kubesan/kubesan
     newName: ${ksanregistry}/kubesan/kubesan

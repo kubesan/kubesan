@@ -85,6 +85,12 @@ __get_a_current_cluster() {
 
     export current_cluster
 
+    if (( requires_snapshotter )); then
+        base_url=https://github.com/kubernetes-csi/external-snapshotter
+        kubectl apply -k "${base_url}/client/config/crd?ref=v8.2.0"
+        kubectl apply -k "${base_url}/deploy/kubernetes/snapshot-controller?ref=v8.2.0"
+    fi
+
     if ! (( create_cache )) && ! (( use_cache )); then
         trap '{
            __delete_${deploy_tool}_cluster "${current_cluster}"
