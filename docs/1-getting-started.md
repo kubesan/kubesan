@@ -47,6 +47,18 @@ cluster; this is so that KubeSAN can utilize NBD netlink configuration
 for as many NBD devices as needed, rather than having to worry about
 setting the nbds_max module parameter.
 
+Your Kubernetes cluster must have the external-snapshotter sidecar and
+its CRDs defined. Some Kubernetes distributions ship with them already
+available (including OpenShift), while others (including plain
+Kubernetes) do not.
+
+If you need to create them, use these commands to do so:
+
+```console
+$ kubectl apply -k "https://github.com/kubernetes-csi/external-snapshotter/client/config/crd?ref=v8.2.0"
+$ kubectl apply -k "https://github.com/kubernetes-csi/external-snapshotter/deploy/kubernetes/snapshot-controller?ref=v8.2.0"
+```
+
 ## LVM configuration
 
 Before installing KubeSAN, each node in the cluster must have LVM and
@@ -169,32 +181,7 @@ Otherwise use the vanilla Kubernetes kustomization:
 $ kubectl apply -k https://gitlab.com/kubesan/kubesan/deploy/kubernetes?ref=v0.10.0
 ```
 
-If you wish to create snapshots of volumes, your Kubernetes cluster must have
-the external-snapshotter sidecar and its CRDs defined. Some Kubernetes
-distributions ship with them already available, while others (including plain
-Kubernetes) do not.
-
-If you need to create them, use these commands to do so:
-
-```console
-$ kubectl apply -k "https://github.com/kubernetes-csi/external-snapshotter/client/config/crd?ref=v8.2.0"
-$ kubectl apply -k "https://github.com/kubernetes-csi/external-snapshotter/deploy/kubernetes/snapshot-controller?ref=v8.2.0"
-```
-
-Then create a `VolumeSnapshotClass` that uses the KubeSAN CSI plugin:
-
-```yaml
-apiVersion: snapshot.storage.k8s.io/v1
-kind: VolumeSnapshotClass
-metadata:
-  name: kubesan
-  annotations:
-    snapshot.storage.kubernetes.io/is-default-class: "true"
-driver: kubesan.gitlab.io
-deletionPolicy: Delete
-```
-
-Create a `StorageClass` that uses the KubeSAN CSI plugin and
+Next, create a `StorageClass` that uses the KubeSAN CSI plugin and
 specifies the name of the shared volume group that you previously
 created (here, `my-vg`):
 
@@ -219,8 +206,9 @@ If you are using OpenShift Virtualization, you must also patch the corresponding
 
 ```console
 $ kubectl patch storageprofile my-san --type=merge -p '{"spec": {"claimPropertySets": [{"accessModes": ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany"], "volumeMode": "Block"}, {"accessModes": ["ReadWriteOnce"], "volumeMode": "Filesystem"}], "cloneStrategy": "csi-clone"}}'
+```
 
-Now you can create volumes like so:
+Now you can create volumes and snapshots like so:
 
 ```yaml
 apiVersion: v1
@@ -235,6 +223,15 @@ spec:
       storage: 1Ti
   accessModes:
     - ReadWriteOnce
+---
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: my-snapshot
+spec:
+  volumeSnapshotClassName: kubesan.gitlab.io
+  source:
+    persistentVolumeClaimName: my-pvc
 ```
 
 When creating your StorageClass objects, KubeSAN understands the
@@ -277,9 +274,9 @@ support in a future release:
 | Description         | RWO  | RWX  | ROX     | Online Expand  | Offline Expand | Snapshots/Clonable | Creation by Contents    |
 | :------------------ | :--- | :--- | :------ | :------ | :------ | :--------- | :---------- |
 | LinearLV Block      | Yes  | Yes  | Planned | No      | Yes     | No         | Planned     |
-| LinearLV Filesystem | Yes  | No   | Planned | No      | Planned | No         | No          |
-| ThinLV Block        | Yes  | Yes  | Planned | Yes     | Yes     | Yes        | Planned     |
-| ThinLV Filesystem   | Yes  | No   | Planned | Planned | Planned | No         | No          |
+| LinearLV Filesystem | Yes  | No   | Planned | No      | Planned | No         | Planned     |
+| ThinLV Block        | Yes  | Yes  | Planned | Yes     | Yes     | Yes        | Yes         |
+| ThinLV Filesystem   | Yes  | No   | Planned | Planned | Planned | Planned    | Planned     |
 
 There are two parts to volume cloning: Clonable represents whether a
 volume can serve as the source of another volume at creation time,

@@ -152,7 +152,7 @@ kind: VolumeSnapshot
 metadata:
   name: $snapshot
 spec:
-  volumeSnapshotClassName: kubesan
+  volumeSnapshotClassName: kubesan.gitlab.io
   source:
     persistentVolumeClaimName: $volume
 EOF

@@ -4,3 +4,4 @@ resources:
 - controller-plugin.yaml
 - driver.yaml
 - node-plugin.yaml
+- volume_snapshot_class.yaml

@@ -78,7 +78,8 @@ spec:
         - name: node-driver-registrar
           image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.8.0
           args:
-            - --kubelet-registration-path=/var/lib/kubelet/plugins/kubesan-node/socket
+            - --kubelet-registration-path
+            - /var/lib/kubelet/plugins/kubesan-node/socket
           volumeMounts:
             - name: registration-dir
               mountPath: /registration

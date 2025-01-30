@@ -30,6 +30,7 @@ configMapGenerator:
     literals:
       - group-start=devel.kubesan
       - group=devel.kubesan.gitlab.io
+      - socket-path-start=/var/lib/kubelet/plugins/devel-kubesan
 
 replacements:
   - source:
@@ -55,6 +56,28 @@ replacements:
           index: 1
         fieldPaths:
           - metadata.name
+  - source:
+      kind: ConfigMap
+      name: devel-configmap
+      fieldPath: data.socket-path-start
+    targets:
+      - select:
+          kind: DaemonSet
+          name: csi-node-plugin
+        options:
+          delimiter: '-'
+          index: 0
+        fieldPaths:
+          - spec.template.spec.containers.[name=node-driver-registrar].args.1
+          - spec.template.spec.volumes.[name=socket-dir].hostPath.path
+      - select:
+          kind: Deployment
+          name: csi-controller-plugin
+        options:
+          delimiter: '-'
+          index: 0
+        fieldPaths:
+          - spec.template.spec.volumes.[name=socket-dir].hostPath.path
   - source:
       kind: ConfigMap
       name: devel-configmap
@@ -96,6 +119,11 @@ replacements:
           kind: Deployment
         fieldPaths:
           - spec.template.spec.containers.0.env.[name=KUBESAN_GROUP].value
+      - select:
+          kind: VolumeSnapshotClass
+        fieldPaths:
+          - driver
+          - metadata.name
 
 transformers:
   - cluster_resource_prefix.yaml

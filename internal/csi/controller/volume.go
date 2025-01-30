@@ -4,8 +4,10 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"math"
+	"reflect"
 	"slices"
 	"strconv"
 	"time"
@@ -447,8 +449,16 @@ func (s *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolu
 // Checks whether the existing volume is compatible with a capabilities array.
 // Returns "" if compatible, or a string describing an inconsistency.
 func validateCapabilities(volume *v1alpha1.Volume, capabilities []*csi.VolumeCapability) string {
-	if volumeType, err := getVolumeType(capabilities); err != nil || *volumeType != volume.Spec.Type {
-		return "incompatible volume type"
+	volumeType, err := getVolumeType(capabilities)
+	switch {
+	case err != nil:
+		return "incompatible volume type: " + err.Error()
+	case volumeType.Block != nil && volume.Spec.Type.Filesystem != nil:
+		return "incompatible volume type: cannot change block to filesystem"
+	case volumeType.Filesystem != nil && volume.Spec.Type.Block != nil:
+		return "incompatible volume type: cannot change filesystem to block"
+	case volumeType.Filesystem != nil && volume.Spec.Type.Filesystem != nil && !reflect.DeepEqual(volumeType.Filesystem, volume.Spec.Type.Filesystem):
+		return fmt.Sprintf("incompatible volume type: filesystem mismatch %v vs. %v", volumeType.Filesystem, volume.Spec.Type.Filesystem)
 	}
 
 	// A subset of access modes is still okay
