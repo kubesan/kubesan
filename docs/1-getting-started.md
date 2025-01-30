@@ -206,8 +206,9 @@ If you are using OpenShift Virtualization, you must also patch the corresponding
 
 ```console
 $ kubectl patch storageprofile my-san --type=merge -p '{"spec": {"claimPropertySets": [{"accessModes": ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany"], "volumeMode": "Block"}, {"accessModes": ["ReadWriteOnce"], "volumeMode": "Filesystem"}], "cloneStrategy": "csi-clone"}}'
+```
 
-Now you can create volumes like so:
+Now you can create volumes and snapshots like so:
 
 ```yaml
 apiVersion: v1
@@ -222,6 +223,15 @@ spec:
       storage: 1Ti
   accessModes:
     - ReadWriteOnce
+---
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: my-snapshot
+spec:
+  volumeSnapshotClassName: kubesan.gitlab.io
+  source:
+    persistentVolumeClaimName: my-pvc
 ```
 
 When creating your StorageClass objects, KubeSAN understands the
@@ -264,9 +274,9 @@ support in a future release:
 | Description         | RWO  | RWX  | ROX     | Online Expand  | Offline Expand | Snapshots/Clonable | Creation by Contents    |
 | :------------------ | :--- | :--- | :------ | :------ | :------ | :--------- | :---------- |
 | LinearLV Block      | Yes  | Yes  | Planned | No      | Yes     | No         | Planned     |
-| LinearLV Filesystem | Yes  | No   | Planned | No      | Planned | No         | No          |
-| ThinLV Block        | Yes  | Yes  | Planned | Yes     | Yes     | Yes        | Planned     |
-| ThinLV Filesystem   | Yes  | No   | Planned | Planned | Planned | No         | No          |
+| LinearLV Filesystem | Yes  | No   | Planned | No      | Planned | No         | Planned     |
+| ThinLV Block        | Yes  | Yes  | Planned | Yes     | Yes     | Yes        | Yes         |
+| ThinLV Filesystem   | Yes  | No   | Planned | Planned | Planned | Planned    | Planned     |
 
 There are two parts to volume cloning: Clonable represents whether a
 volume can serve as the source of another volume at creation time,
