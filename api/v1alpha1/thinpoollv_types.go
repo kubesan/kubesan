@@ -13,14 +13,17 @@ type ThinPoolLvSpec struct {
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	// + This pattern is only barely more permissive than lvm VG naming rules, other than a shorter length.
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_][-a-zA-Z0-9+_.]*$"
+	// +required
 	VgName string `json:"vgName"`
 
 	// Initial size of the thin pool.  Must be a multiple of 512.
 	// +kubebuilder:validation:Minimum=512
 	// +kubebuilder:validation:MultipleOf=512
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
+	// +required
 	SizeBytes int64 `json:"sizeBytes"`
 
 	// May be updated at will.
@@ -38,6 +41,7 @@ type ThinPoolLvSpec struct {
 	// + This rule must permit RFC 1123 DNS subdomain names.
 	// +kubebuilder:validation:MaxLength=253
 	// +kubebuilder:validation:Pattern="^[a-z0-9][-.a-z0-9]*$"
+	// +optional
 	ActiveOnNode string `json:"activeOnNode,omitempty"`
 }
 
@@ -58,16 +62,20 @@ type ThinLvSpec struct {
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	// + This is roughly one RFC 1123 label name.
 	// + This pattern is intentionally more restricted than lvm LV naming rules.
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern="^[a-z0-9][-a-z0-9]*$"
+	// +required
 	Name string `json:"name"`
 
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
+	// +required
 	Contents ThinLvContents `json:"contents"`
 
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
+	// +required
 	ReadOnly bool `json:"readOnly"`
 
 	// Should be 0 if readOnly is true or if marking for deletion, otherwise, it is positive and a multiple of 512.
@@ -77,6 +85,7 @@ type ThinLvSpec struct {
 	SizeBytes int64 `json:"sizeBytes"`
 
 	// May be updated at will.
+	// +required
 	State ThinLvSpecState `json:"state"`
 }
 
@@ -94,7 +103,7 @@ const (
 type ThinLvSpecState struct {
 	// +unionDiscriminator
 	// +kubebuilder:validation:Enum:="Inactive";"Active";"Removed"
-	// +kubebuilder:validation:Required
+	// +required
 	// + TODO add validation rule preventing transitions out of "Removed" state
 	Name string `json:"name"`
 }
@@ -111,7 +120,7 @@ const (
 type ThinLvContents struct {
 	// +unionDiscriminator
 	// +kubebuilder:validation:Enum:="Empty";"Snapshot"
-	// +kubebuilder:validation:Required
+	// +required
 	ContentsType string `json:"contentsType"`
 
 	// +optional
@@ -121,8 +130,10 @@ type ThinLvContents struct {
 type ThinLvContentsSnapshot struct {
 	// The name of the source snapshot.
 	// + This rule intentionally matches ThinPoolLv.ThinLvSpec.Name
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern="^[a-z][-a-z0-9]*$"
+	// +required
 	SourceThinLvName string `json:"sourceThinLvName"`
 }
 
@@ -135,6 +146,7 @@ type ThinPoolLvStatus struct {
 	// The generation of the spec used to produce this status.  Useful
 	// as a witness when waiting for status to change.
 	// +kubebuilder:validation:XValidation:rule=self>=oldSelf
+	// +required
 	ObservedGeneration int64 `json:"observedGeneration"`
 
 	// Conditions
@@ -176,14 +188,18 @@ func (s *ThinPoolLvStatus) FindThinLv(name string) *ThinLvStatus {
 type ThinLvStatus struct {
 	// The name of the LVM thin LV.
 	// + This rule intentionally matches ThinPoolLv.ThinLvSpec.Name
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern="^[a-z][-a-z0-9]*$"
+	// +required
 	Name string `json:"name"`
 
 	// The state of the LVM thin LV.
+	// +required
 	State ThinLvStatusState `json:"state"`
 
 	// The current size of the LVM thin LV.
+	// +required
 	SizeBytes int64 `json:"sizeBytes"`
 }
 
@@ -202,9 +218,10 @@ const (
 type ThinLvStatusState struct {
 	// +unionDiscriminator
 	// +kubebuilder:validation:Enum:="Inactive";"Active";"Removed"
-	// +kubebuilder:validation:Required
+	// +required
 	Name string `json:"name"`
 
+	// + TODO Is this field used?
 	// +optional
 	Active *ThinLvStatusStateActive `json:"active,omitempty"`
 }
@@ -213,8 +230,10 @@ type ThinLvStatusStateActive struct {
 	// The path at which the LVM thin LV is available on the node where the LVM thin pool LV is active.
 	// + This rule must permit VG plus LV names. It could be written tighter
 	// + to ensure the basename matches our LV rules, but that adds CEL cost.
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=128
-	// +kubebuilder:validation:Pattern="^(|/dev/[-_+/a-z0-9]+)$"
+	// +kubebuilder:validation:Pattern="^/dev/[-_+/a-z0-9]+$"
+	// +required
 	Path string `json:"path"`
 }
 
@@ -227,12 +246,18 @@ type ThinLvStatusStateActive struct {
 // +kubebuilder:printcolumn:name="Node",type=string,JSONPath=`.status.activeOnNode`,description='Node where thin pool is currently active'
 // + TODO determine if there is a way to print a column "LVs" that displays the number of items in the .status.thinLvs array
 // + TODO should we expose the thin pool size via Status?
+// +kubebuilder:selectablefield:JSONPath=`.spec.vgName`
+// +kubebuilder:selectablefield:JSONPath=`.spec.activeOnNode`
+// +kubebuilder:selectablefield:JSONPath=`.status.activeOnNode`
 
 type ThinPoolLv struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   ThinPoolLvSpec   `json:"spec,omitempty"`
+	// +required
+	Spec ThinPoolLvSpec `json:"spec"`
+
+	// +optional
 	Status ThinPoolLvStatus `json:"status,omitempty"`
 }
 
