@@ -100,6 +100,7 @@ spec:
                             sourceThinLvName:
                               description: The name of the source snapshot.
                               maxLength: 63
+                              minLength: 1
                               pattern: ^[a-z][-a-z0-9]*$
                               type: string
                           required:
@@ -113,6 +114,7 @@ spec:
                     name:
                       description: Should be set from creation and never updated.
                       maxLength: 63
+                      minLength: 1
                       pattern: ^[a-z0-9][-a-z0-9]*$
                       type: string
                       x-kubernetes-validations:
@@ -157,6 +159,7 @@ spec:
               vgName:
                 description: Should be set from creation and never updated.
                 maxLength: 63
+                minLength: 1
                 pattern: ^[a-zA-Z0-9_][-a-zA-Z0-9+_.]*$
                 type: string
                 x-kubernetes-validations:
@@ -265,6 +268,7 @@ spec:
                     name:
                       description: The name of the LVM thin LV.
                       maxLength: 63
+                      minLength: 1
                       pattern: ^[a-z][-a-z0-9]*$
                       type: string
                     sizeBytes:
@@ -280,7 +284,8 @@ spec:
                               description: The path at which the LVM thin LV is available
                                 on the node where the LVM thin pool LV is active.
                               maxLength: 128
-                              pattern: ^(|/dev/[-_+/a-z0-9]+)$
+                              minLength: 1
+                              pattern: ^/dev/[-_+/a-z0-9]+$
                               type: string
                           required:
                           - path
@@ -307,6 +312,8 @@ spec:
             required:
             - observedGeneration
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

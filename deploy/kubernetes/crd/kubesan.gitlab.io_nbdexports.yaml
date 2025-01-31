@@ -74,6 +74,7 @@ spec:
                   The short name of the LV (Volume or Snapshot) to export, write-once
                   at creation.
                 maxLength: 63
+                minLength: 1
                 pattern: ^[a-z0-9][-a-z0-9]*$
                 type: string
                 x-kubernetes-validations:
@@ -81,6 +82,7 @@ spec:
               host:
                 description: The node hosting the export. Write-once at creation.
                 maxLength: 253
+                minLength: 1
                 pattern: ^[a-z0-9][-.a-z0-9]*$
                 type: string
                 x-kubernetes-validations:
@@ -198,6 +200,7 @@ spec:
                 description: |-
                   NBD URI for connecting to the NBD export, using IP address.
                   write-once when Conditions["Available"] is first set
+                maxLength: 128
                 pattern: ^nbd://[0-9a-f:.]+/[a-z][-a-z0-9]*$
                 type: string
                 x-kubernetes-validations:
@@ -205,6 +208,8 @@ spec:
             required:
             - observedGeneration
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

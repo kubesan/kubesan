@@ -15,31 +15,38 @@ type VolumeSpec struct {
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	// + This pattern is only barely more permissive than lvm VG naming rules, other than a shorter length.
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_][-a-zA-Z0-9+_.]*$"
+	// +required
 	VgName string `json:"vgName"`
 
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	// +kubebuilder:validation:Enum=Thin;Linear
+	// +required
 	Mode VolumeMode `json:"mode"`
 
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
+	// +required
 	Type VolumeType `json:"type"`
 
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
+	// +required
 	Contents VolumeContents `json:"contents"`
 
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	// +listType=set
+	// +required
 	AccessModes []VolumeAccessMode `json:"accessModes"`
 
 	// Must be positive and a multiple of 512. May be updated at will, but the actual size will only ever increase.
 	// +kubebuilder:validation:Minimum=512
 	// +kubebuilder:validation:MultipleOf=512
+	// +required
 	SizeBytes int64 `json:"sizeBytes"`
 
 	// May be updated at will.
@@ -47,6 +54,7 @@ type VolumeSpec struct {
 	// + This rule must permit RFC 1123 DNS subdomain names.
 	// +kubebuilder:validation:items:MaxLength=253
 	// +kubebuilder:validation:items:Pattern="^[a-z0-9][-.a-z0-9]*$"
+	// +optional
 	AttachToNodes []string `json:"attachToNodes,omitempty"`
 }
 
@@ -72,6 +80,7 @@ const (
 	VolumeModeLinear VolumeMode = "Linear"
 )
 
+// + TODO make this a proper discriminated union
 type VolumeType struct {
 	Block      *VolumeTypeBlock      `json:"block,omitempty"`
 	Filesystem *VolumeTypeFilesystem `json:"filesystem,omitempty"`
@@ -81,9 +90,11 @@ type VolumeTypeBlock struct {
 }
 
 type VolumeTypeFilesystem struct {
+	// +required
 	FsType string `json:"fsType"`
 
 	// +listType=atomic
+	// +optional
 	MountOptions []string `json:"mountOptions,omitempty"`
 }
 
@@ -97,7 +108,7 @@ const (
 type VolumeContents struct {
 	// +unionDiscriminator
 	// +kubebuilder:validation:Enum:="Empty";"CloneVolume";"CloneSnapshot"
-	// +kubebuilder:validation:Required
+	// +required
 	ContentsType string `json:"contentsType"`
 
 	// +optional
@@ -109,15 +120,19 @@ type VolumeContents struct {
 
 type VolumeContentsCloneVolume struct {
 	// + This is roughly one RFC 1123 label name.
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern="^[a-z0-9][-a-z0-9]*$"
+	// +required
 	SourceVolume string `json:"sourceVolume"`
 }
 
 type VolumeContentsCloneSnapshot struct {
 	// + This is roughly one RFC 1123 label name.
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern="^[a-z0-9][-a-z0-9]*$"
+	// +required
 	SourceSnapshot string `json:"sourceSnapshot"`
 }
 
@@ -144,6 +159,7 @@ type VolumeStatus struct {
 	// The generation of the spec used to produce this status.  Useful
 	// as a witness when waiting for status to change.
 	// +kubebuilder:validation:XValidation:rule=self>=oldSelf
+	// +required
 	ObservedGeneration int64 `json:"observedGeneration"`
 
 	// Conditions
@@ -163,27 +179,31 @@ type VolumeStatus struct {
 
 	// Reflects the current size of the volume.
 	// +kubebuilder:validation:XValidation:rule=oldSelf<=self
+	// +required
 	SizeBytes int64 `json:"sizeBytes"`
 
 	// Reflects the nodes to which the volume is attached.
 	// +listType=set
 	// + This rule must permit RFC 1123 DNS subdomain names.
+	// +kubebuilder:validation:items:MinLength=1
 	// +kubebuilder:validation:items:MaxLength=253
 	// +kubebuilder:validation:items:Pattern="^[a-z0-9][-.a-z0-9]*$"
+	// +optional
 	AttachedToNodes []string `json:"attachedToNodes,omitempty"`
 
 	// The path at which the volume is available on nodes to which it is attached.
-	// + TODO does this have to be in Status, or can it be reliably generated/probed where needed?
 	// + This rule must permit VG plus LV names. It could be written tighter
 	// + to ensure the basename matches our LV rules, but that adds CEL cost.
 	// +kubebuilder:validation:MaxLength=128
 	// +kubebuilder:validation:Pattern="^(|/dev/[-_+/a-z0-9]+)$"
+	// +optional
 	Path string `json:"path,omitempty"`
 
 	// The name of any NBDExport serving this volume.
 	// + This is roughly two RFC 1123 label names.
 	// +kubebuilder:validation:MaxLength=128
 	// +kubebuilder:validation:Pattern="^[a-z0-9][-a-z0-9]*$"
+	// +optional
 	NBDExport string `json:"nbdExport,omitempty"`
 }
 
@@ -209,7 +229,10 @@ type Volume struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   VolumeSpec   `json:"spec,omitempty"`
+	// +required
+	Spec VolumeSpec `json:"spec"`
+
+	// +optional
 	Status VolumeStatus `json:"status,omitempty"`
 }
 

@@ -105,6 +105,7 @@ spec:
                     properties:
                       sourceSnapshot:
                         maxLength: 63
+                        minLength: 1
                         pattern: ^[a-z0-9][-a-z0-9]*$
                         type: string
                     required:
@@ -114,6 +115,7 @@ spec:
                     properties:
                       sourceVolume:
                         maxLength: 63
+                        minLength: 1
                         pattern: ^[a-z0-9][-a-z0-9]*$
                         type: string
                     required:
@@ -168,6 +170,7 @@ spec:
               vgName:
                 description: Should be set from creation and never updated.
                 maxLength: 63
+                minLength: 1
                 pattern: ^[a-zA-Z0-9_][-a-zA-Z0-9+_.]*$
                 type: string
                 x-kubernetes-validations:
@@ -298,6 +301,8 @@ spec:
             - observedGeneration
             - sizeBytes
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true

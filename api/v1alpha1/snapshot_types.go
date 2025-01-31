@@ -13,15 +13,19 @@ type SnapshotSpec struct {
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	// + This pattern is only barely more permissive than lvm VG naming rules, other than a shorter length.
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern="^[a-zA-Z0-9_][-a-zA-Z0-9+_.]*$"
+	// +required
 	VgName string `json:"vgName"`
 
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	// + This is roughly RFC 1123 label name.
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern="^[a-z0-9][-a-z0-9]*$"
+	// +required
 	SourceVolume string `json:"sourceVolume"`
 }
 
@@ -33,6 +37,7 @@ type SnapshotStatus struct {
 	// The generation of the spec used to produce this status.  Useful
 	// as a witness when waiting for status to change.
 	// +kubebuilder:validation:XValidation:rule=self>=oldSelf
+	// +required
 	ObservedGeneration int64 `json:"observedGeneration"`
 
 	// Conditions
@@ -45,6 +50,8 @@ type SnapshotStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
 
 	// The size of the snapshot, immutable once set.
+	// +kubebuilder:validation:XValidation:rule=oldSelf==self
+	// +required
 	SizeBytes int64 `json:"sizeBytes"`
 }
 
@@ -59,7 +66,10 @@ type Snapshot struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   SnapshotSpec   `json:"spec,omitempty"`
+	// +required
+	Spec SnapshotSpec `json:"spec"`
+
+	// +optional
 	Status SnapshotStatus `json:"status,omitempty"`
 }
 

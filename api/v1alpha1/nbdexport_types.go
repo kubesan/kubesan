@@ -16,8 +16,10 @@ type NBDExportSpec struct {
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	// + This is roughly one RFC 1123 label name.
 	// + This rule intentionally matches ThinPoolLv.ThinLvSpec.Name
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=63
 	// +kubebuilder:validation:Pattern="^[a-z0-9][-a-z0-9]*$"
+	// +required
 	Export string `json:"export"`
 
 	// The "/dev/..." path of the export, write-once at creation, then
@@ -33,20 +35,24 @@ type NBDExportSpec struct {
 	// The node hosting the export. Write-once at creation.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	// + This rule must permit RFC 1123 DNS subdomain names.
+	// +kubebuilder:validation:MinLength=1
 	// +kubebuilder:validation:MaxLength=253
 	// +kubebuilder:validation:Pattern="^[a-z0-9][-.a-z0-9]*$"
+	// +required
 	Host string `json:"host"`
 
 	// The size of the export. Write-once at creation.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	// +kubebuilder:validation:Minimum=512
 	// +kubebuilder:validation:MultipleOf=512
+	// +required
 	SizeBytes int64 `json:"sizeBytes"`
 
 	// The set of clients connecting to the export.
 	// +optional
 	// +listType=set
 	// + This rule must permit RFC 1123 DNS subdomain names.
+	// +kubebuilder:validation:items:MinLength=1
 	// +kubebuilder:validation:items:MaxLength=253
 	// +kubebuilder:validation:items:Pattern="^[a-z0-9][-.a-z0-9]*$"
 	Clients []string `json:"clients,omitempty"`
@@ -60,6 +66,7 @@ type NBDExportStatus struct {
 	// The generation of the spec used to produce this status.  Useful
 	// as a witness when waiting for status to change.
 	// +kubebuilder:validation:XValidation:rule=self>=oldSelf
+	// +required
 	ObservedGeneration int64 `json:"observedGeneration"`
 
 	// Conditions
@@ -75,8 +82,9 @@ type NBDExportStatus struct {
 	// write-once when Conditions["Available"] is first set
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	// + TODO Add TLS support, which changes this to a nbds:// URI
-	// +kubebuilder:validation:items:MaxLength=128
+	// +kubebuilder:validation:MaxLength=128
 	// +kubebuilder:validation:Pattern="^nbd://[0-9a-f:.]+/[a-z][-a-z0-9]*$"
+	// +optional
 	URI string `json:"uri,omitempty"`
 }
 
@@ -93,7 +101,10 @@ type NBDExport struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   NBDExportSpec   `json:"spec,omitempty"`
+	// +required
+	Spec NBDExportSpec `json:"spec"`
+
+	// +optional
 	Status NBDExportStatus `json:"status,omitempty"`
 }
 
