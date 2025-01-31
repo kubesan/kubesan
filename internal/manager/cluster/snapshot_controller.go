@@ -5,18 +5,20 @@ package cluster
 import (
 	"context"
 
-	"gitlab.com/kubesan/kubesan/api/v1alpha1"
-	"gitlab.com/kubesan/kubesan/internal/common/config"
-	"gitlab.com/kubesan/kubesan/internal/manager/common/blobs"
-	"gitlab.com/kubesan/kubesan/internal/manager/common/util"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	"gitlab.com/kubesan/kubesan/api/v1alpha1"
+	"gitlab.com/kubesan/kubesan/internal/common/config"
+	"gitlab.com/kubesan/kubesan/internal/manager/common/blobs"
+	"gitlab.com/kubesan/kubesan/internal/manager/common/util"
 )
 
 type SnapshotReconciler struct {
@@ -31,6 +33,7 @@ func SetUpSnapshotReconciler(mgr ctrl.Manager) error {
 	}
 
 	return ctrl.NewControllerManagedBy(mgr).
+		WithOptions(controller.Options{MaxConcurrentReconciles: config.MaxConcurrentReconciles}).
 		For(&v1alpha1.Snapshot{}).
 		Owns(&v1alpha1.ThinPoolLv{}, builder.MatchEveryOwner). // for ThinBlobManager
 		Complete(r)

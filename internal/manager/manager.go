@@ -27,6 +27,7 @@ func RunClusterControllers() error {
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.IntVar(&config.MaxConcurrentReconciles, "max-concurrent-reconciles", 10, "The number of objects that a given controller can reconcile at once.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -68,6 +69,7 @@ func RunClusterControllers() error {
 func RunNodeControllers() error {
 	var probeAddr string
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
+	flag.IntVar(&config.MaxConcurrentReconciles, "max-concurrent-reconciles", 10, "The number of objects that a given controller can reconcile at once.")
 	opts := zap.Options{
 		Development: true,
 	}
