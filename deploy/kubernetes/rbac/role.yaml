@@ -13,83 +13,8 @@ rules:
   - kubesan.gitlab.io
   resources:
   - nbdexports
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kubesan.gitlab.io
-  resources:
-  - nbdexports/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - kubesan.gitlab.io
-  resources:
-  - nbdexports/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - kubesan.gitlab.io
-  resources:
   - snapshots
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kubesan.gitlab.io
-  resources:
-  - snapshots/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - kubesan.gitlab.io
-  resources:
-  - snapshots/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - kubesan.gitlab.io
-  resources:
   - thinpoollvs
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - kubesan.gitlab.io
-  resources:
-  - thinpoollvs/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - kubesan.gitlab.io
-  resources:
-  - thinpoollvs/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - kubesan.gitlab.io
-  resources:
   - volumes
   verbs:
   - create
@@ -102,12 +27,18 @@ rules:
 - apiGroups:
   - kubesan.gitlab.io
   resources:
+  - nbdexports/finalizers
+  - snapshots/finalizers
+  - thinpoollvs/finalizers
   - volumes/finalizers
   verbs:
   - update
 - apiGroups:
   - kubesan.gitlab.io
   resources:
+  - nbdexports/status
+  - snapshots/status
+  - thinpoollvs/status
   - volumes/status
   verbs:
   - get
