@@ -96,6 +96,9 @@ type NBDExportStatus struct {
 // + TODO determine if there is a way to print a column "Clients" that displays the number of items in the .spec.clients array
 // +kubebuilder:printcolumn:name="Available",type=date,JSONPath=`.status.conditions[?(@.type=="Available")].lastTransitionTime`,description='Time since export was available'
 // +kubebuilder:printcolumn:name="URI",type=string,JSONPath=`.status.uri`,description='NBD URI for the export'
+// +kubebuilder:selectablefield:JSONPath=`.spec.host`
+// +kubebuilder:selectablefield:JSONPath=`.spec.export`
+// +kubebuilder:selectablefield:JSONPath=`.status.uri`
 
 type NBDExport struct {
 	metav1.TypeMeta   `json:",inline"`

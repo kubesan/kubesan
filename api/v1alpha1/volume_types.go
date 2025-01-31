@@ -223,6 +223,8 @@ func (v *VolumeStatus) IsAttachedToNode(node string) bool {
 // +kubebuilder:printcolumn:name="Size",type=integer,JSONPath=`.status.sizeBytes`,description='Size of volume'
 // +kubebuilder:printcolumn:name="Mode",type=string,JSONPath=`.spec.mode`,description='Mode of volume (thin or linear)',priority=2
 // +kubebuilder:printcolumn:name="FSType",type=string,JSONPath=`.spec.type.filesystem.fsType`,description='Filesystem type (blank if block)',priority=2
+// +kubebuilder:selectablefield:JSONPath=`.spec.vgName`
+// +kubebuilder:selectablefield:JSONPath=`.spec.mode`
 
 // Volume is the Schema for the volumes API
 type Volume struct {

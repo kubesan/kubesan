@@ -302,6 +302,10 @@ spec:
         required:
         - spec
         type: object
+    selectableFields:
+    - jsonPath: .spec.vgName
+    - jsonPath: .spec.activeOnNode
+    - jsonPath: .status.activeOnNode
     served: true
     storage: true
     subresources:

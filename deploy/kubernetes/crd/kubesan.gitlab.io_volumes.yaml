@@ -296,6 +296,9 @@ spec:
         required:
         - spec
         type: object
+    selectableFields:
+    - jsonPath: .spec.vgName
+    - jsonPath: .spec.mode
     served: true
     storage: true
     subresources:

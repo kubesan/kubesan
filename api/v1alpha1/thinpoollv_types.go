@@ -246,6 +246,9 @@ type ThinLvStatusStateActive struct {
 // +kubebuilder:printcolumn:name="Node",type=string,JSONPath=`.status.activeOnNode`,description='Node where thin pool is currently active'
 // + TODO determine if there is a way to print a column "LVs" that displays the number of items in the .status.thinLvs array
 // + TODO should we expose the thin pool size via Status?
+// +kubebuilder:selectablefield:JSONPath=`.spec.vgName`
+// +kubebuilder:selectablefield:JSONPath=`.spec.activeOnNode`
+// +kubebuilder:selectablefield:JSONPath=`.status.activeOnNode`
 
 type ThinPoolLv struct {
 	metav1.TypeMeta   `json:",inline"`

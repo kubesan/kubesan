@@ -61,6 +61,8 @@ type SnapshotStatus struct {
 // +kubebuilder:printcolumn:name="Source",type=string,JSONPath=`.spec.sourceVolume`,description='Volume that this snapshot was created on'
 // +kubebuilder:printcolumn:name="Available",type=date,JSONPath=`.status.conditions[?(@.type=="Available")].lastTransitionTime`,description='Time since snapshot was available'
 // +kubebuilder:printcolumn:name="Size",type=integer,JSONPath=`.status.sizeBytes`,description='Size of snapshot'
+// +kubebuilder:selectablefield:JSONPath=`.spec.vgName`
+// +kubebuilder:selectablefield:JSONPath=`.spec.sourceVolume`
 
 type Snapshot struct {
 	metav1.TypeMeta   `json:",inline"`

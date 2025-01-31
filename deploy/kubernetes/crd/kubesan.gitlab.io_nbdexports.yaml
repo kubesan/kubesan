@@ -201,6 +201,10 @@ spec:
         required:
         - spec
         type: object
+    selectableFields:
+    - jsonPath: .spec.host
+    - jsonPath: .spec.export
+    - jsonPath: .status.uri
     served: true
     storage: true
     subresources:
