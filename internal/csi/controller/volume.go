@@ -5,7 +5,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"log"
 	"math"
 	"reflect"
 	"slices"
@@ -23,6 +22,7 @@ import (
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
@@ -416,6 +416,7 @@ func (s *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolu
 
 	// Delete() returns immediately so wait for the resource to go away
 
+	log := log.FromContext(ctx).WithValues("volume", req.VolumeId)
 	err := wait.Backoff{
 		Duration: 500 * time.Millisecond,
 		Factor:   2, // exponential backoff
@@ -425,13 +426,13 @@ func (s *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolu
 	}.DelayFunc().Until(ctx, true, false, func(ctx context.Context) (bool, error) {
 		err := s.client.Get(ctx, types.NamespacedName{Name: req.VolumeId, Namespace: config.Namespace}, volume)
 		if err == nil {
-			log.Printf("Volume \"%v\" still exists", req.VolumeId)
+			log.Info("Volume still exists")
 			return false, nil // keep going
 		} else if errors.IsNotFound(err) {
-			log.Printf("Volume \"%v\" deleted", req.VolumeId)
+			log.Info("Volume deleted")
 			return true, nil // done
 		} else {
-			log.Printf("Volume \"%v\" Get() failed: %+v", req.VolumeId, err)
+			log.Error(err, "Volume Get() failed")
 			return false, err
 		}
 	})
