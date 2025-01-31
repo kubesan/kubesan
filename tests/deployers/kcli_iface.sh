@@ -147,6 +147,7 @@ __start_kcli_cluster() {
         if (( use_cache )); then
             __log_cyan "restore from snapshot"
             __kcli revert plan-snapshot --plan "$1" "$1"-snap
+            requires_snapshotter=0 # The snapshotter was stored pre-snapshot
         fi
     fi
 
