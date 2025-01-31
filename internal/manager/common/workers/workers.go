@@ -4,6 +4,7 @@ package workers
 
 import (
 	"context"
+	"sync"
 
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -59,8 +60,9 @@ func (w *worker) getResult() (result error, done bool) {
 }
 
 // An API for background work that triggers the reconcile control loop upon
-// completion. Not thread-safe, only use from one reconciler.
+// completion.
 type Workers struct {
+	sync.Mutex
 	Workers map[string]*worker
 
 	// The reconciler is triggered by sending to this channel
@@ -87,26 +89,34 @@ func NewWorkers() *Workers {
 // exists then a new one will be started. If work with the name exists and is
 // done, then it is removed so that a future call will invoke the worker again.
 func (w *Workers) Run(name string, object client.Object, work Work) error {
+	w.Lock()
 	worker, ok := w.Workers[name]
 	if !ok {
 		worker = newWorker()
 		w.Workers[name] = worker
+		w.Unlock()
 		worker.start(work, func() {
 			w.events <- event.GenericEvent{Object: object}
 		})
+	} else {
+		w.Unlock()
 	}
 	result, done := worker.getResult()
 	if !done {
 		return util.NewWatchPending("waiting for worker to complete")
 	}
+	w.Lock()
 	delete(w.Workers, name)
+	w.Unlock()
 	return result
 }
 
 // Returns nil if the worker has completed or WatchPending if still in
 // progress. Any error returned by the worker is ignored.
 func (w *Workers) Cancel(name string) error {
+	w.Lock()
 	worker, ok := w.Workers[name]
+	w.Unlock()
 	if !ok {
 		return nil
 	}
@@ -115,7 +125,9 @@ func (w *Workers) Cancel(name string) error {
 	if !done {
 		return util.NewWatchPending("waiting for worker cancellation")
 	}
+	w.Lock()
 	delete(w.Workers, name)
+	w.Unlock()
 	return nil
 }
 
