@@ -90,7 +90,7 @@ func (r *NBDExportNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	if export.Status.URI == "" {
+	if export.Status.URI == "" && !nbd.Shutdown {
 		log.Info("Starting NBD export")
 
 		uri, err := nbd.StartExport(ctx, export.Spec.Export, export.Spec.Path)

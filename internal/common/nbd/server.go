@@ -269,6 +269,11 @@ func StopExport(ctx context.Context, export string) error {
 
 	blockdevs.Lock()
 	delete(blockdevs.m, export)
+	if Shutdown && len(blockdevs.m) == 0 {
+		log := log.FromContext(ctx)
+		log.Info("last client closed")
+		close(shutdownChannel)
+	}
 	blockdevs.Unlock()
 
 	return nil
@@ -291,4 +296,49 @@ func ShouldStopExport(export *v1alpha1.NBDExport, nodes []string, sizeBytes int6
 		return true
 	}
 	return !slices.Contains(nodes, config.LocalNodeName) || len(nodes) == 1
+}
+
+var (
+	// Set to true when the NBD server is no longer accepting new clients.
+	Shutdown bool
+
+	// Close this channel to indicate when StopServer reacted.
+	shutdownChannel = make(chan struct{})
+)
+
+// End the server as part of the pod shutdown sequence, via best effort.
+// Return a channel that will unblock when NBD has no clients left.
+func StopServer(ctx context.Context) <-chan struct{} {
+	log := log.FromContext(ctx)
+	log.Info("preparing to shut down q-s-d")
+
+	// If there are no clients, we close the channel now; otherwise,
+	// it will be closed when the last client stops.
+	blockdevs.Lock()
+	Shutdown = true
+	if len(blockdevs.m) == 0 {
+		log.Info("no clients")
+		close(shutdownChannel)
+	}
+	blockdevs.Unlock()
+
+	go func() {
+		<-shutdownChannel
+		qsd, err := newQemuStorageDaemonMonitor()
+		if err != nil {
+			log.Error(err, "qemu-storage-daemon shutdown connection failed")
+			return
+		}
+		defer qsd.Close()
+
+		cmd := `{"execute": "quit"}`
+		log.Info("sending QMP to q-s-d", "command", cmd)
+		if _, err = qsd.monitor.Run([]byte(cmd)); err != nil {
+			// This error is likely but harmless, since the monitor
+			// may have closed before it got a chance to respond.
+			log.Info("ignoring QMP error", "error", err)
+		}
+	}()
+
+	return shutdownChannel
 }

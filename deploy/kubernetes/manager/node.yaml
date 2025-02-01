@@ -69,8 +69,10 @@ spec:
           volumeMounts:
             - mountPath: /run/qsd
               name: qsd-sock-dir
+      initContainers:
         - name: qemu-storage-daemon
           image: kubesan
+          restartPolicy: Always
           command:
             - /usr/bin/qemu-storage-daemon
             - --chardev
