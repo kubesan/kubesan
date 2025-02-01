@@ -4,10 +4,14 @@ package node
 
 import (
 	"context"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -34,6 +38,55 @@ func SetUpNBDExportNodeReconciler(mgr ctrl.Manager) error {
 
 	nbd.Startup()
 
+	// We are only interested in NBDExports on this node; set up
+	// an indexer so that we can filter lists.
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.NBDExport{}, "spec.host", func(rawObj client.Object) []string {
+		export := rawObj.(*v1alpha1.NBDExport)
+		return []string{export.Spec.Host}
+	}); err != nil {
+		return err
+	}
+
+	// Time for some magic.  The default ctrl.SetupSignalHandler
+	// points to signals.SetupSignalHandler() that does not let us
+	// inject any cleanup between the arrival of SIGTERM and when
+	// it starts cancelling all controllers.  But we can replace
+	// it with our own variant that lets us delay the cancel()
+	// after SIGTERM is first detected until we are satisfied that
+	// we are not stranding any active NBDExports.  Note that if
+	// our efforts for a clean shutdown fail to act quickly,
+	// kubelet will still force an exit after the pod's
+	// terminationGracePeriodSeconds.
+	ctrl.SetupSignalHandler = func() context.Context {
+		ctx, cancel := context.WithCancel(context.Background())
+		log := ctrl.Log.WithName("shutdown")
+		ctx = ctrl.LoggerInto(ctx, log)
+		c := make(chan os.Signal, 2)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		log.Info("shutdown context created")
+		go func() {
+			<-c
+			log.Info("signal received, starting shutdown")
+			done := nbd.StopServer(ctx)
+			if err := triggerCleanup(ctx, r.Client); err != nil {
+				log.Error(err, "safe shutdown failed")
+			}
+			select {
+			case <-done:
+				log.Info("shutdown proceeding to cancel context")
+				cancel()
+				<-c
+			case <-c:
+			}
+			log.Info("shutdown got second signal")
+			os.Exit(1) // Exit directly on second signal.
+		}()
+
+		return ctx
+	}
+
+	// Now to create the controller.
+
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(controller.Options{MaxConcurrentReconciles: config.MaxConcurrentReconciles}).
 		// We are only interested in Spec changes to the
@@ -43,6 +96,30 @@ func SetUpNBDExportNodeReconciler(mgr ctrl.Manager) error {
 			return export.Spec.Host == config.LocalNodeName
 		}), predicate.GenerationChangedPredicate{}))).
 		Complete(r)
+}
+
+// Inform all NBDExports on this node that SIGTERM has been seen.
+func triggerCleanup(ctx context.Context, c client.Client) error {
+	log := log.FromContext(ctx)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		nbdExportList := &v1alpha1.NBDExportList{}
+		if err := c.List(ctx, nbdExportList, client.MatchingFields{"spec.host": config.LocalNodeName}); err != nil {
+			return err
+		}
+		var lastErr error = nil
+		for i := range nbdExportList.Items {
+			export := &nbdExportList.Items[i]
+			if export.Spec.Host != config.LocalNodeName || export.Status.URI == "" || export.Spec.Path == "" {
+				continue
+			}
+			log.Info("triggering export shutdown", "export", export.Name)
+			export.Spec.Path = ""
+			if err := c.Update(ctx, export); client.IgnoreNotFound(err) != nil {
+				lastErr = err
+			}
+		}
+		return lastErr
+	})
 }
 
 // +kubebuilder:rbac:groups=kubesan.gitlab.io,resources=nbdexports,verbs=get;list;watch;create;update;patch;delete,namespace=kubesan-system
