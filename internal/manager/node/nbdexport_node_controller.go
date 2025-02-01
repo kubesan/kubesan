@@ -9,10 +9,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
@@ -34,7 +36,12 @@ func SetUpNBDExportNodeReconciler(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(controller.Options{MaxConcurrentReconciles: config.MaxConcurrentReconciles}).
-		For(&v1alpha1.NBDExport{}).
+		// We are only interested in Spec changes to the
+		// NBDExports hosted on this node.
+		For(&v1alpha1.NBDExport{}, builder.WithPredicates(predicate.And(predicate.NewPredicateFuncs(func(object client.Object) bool {
+			export := object.(*v1alpha1.NBDExport)
+			return export.Spec.Host == config.LocalNodeName
+		}), predicate.GenerationChangedPredicate{}))).
 		Complete(r)
 }
 
