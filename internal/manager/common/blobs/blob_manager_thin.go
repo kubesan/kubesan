@@ -147,7 +147,7 @@ func (m *ThinBlobManager) forgetRemovedThinLv(ctx context.Context, thinPoolLv *v
 }
 
 // Create or expand a thin volume blob within the manager's pool.
-func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64, owner client.Object) error {
+func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64, skipWipe bool, owner client.Object) error {
 	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
 
 	thinPoolLv, err := m.createThinPoolLv(ctx, name, sizeBytes, owner)

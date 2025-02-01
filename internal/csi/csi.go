@@ -4,13 +4,19 @@ package csi
 
 import (
 	"context"
+	"flag"
 	"fmt"
-	"log"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc"
+
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"gitlab.com/kubesan/kubesan/internal/common/config"
 	csiclient "gitlab.com/kubesan/kubesan/internal/csi/common/client"
@@ -34,6 +40,16 @@ func RunNodePlugin() error {
 }
 
 func serve(register func(*grpc.Server, *csiclient.CsiK8sClient)) error {
+	// Set up structured logging
+
+	opts := zap.Options{
+		Development: true,
+	}
+	opts.BindFlags(flag.CommandLine)
+	flag.Parse()
+
+	log.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
 	// create Kubernetes client
 
 	client, err := csiclient.NewCsiK8sClient()
@@ -61,12 +77,13 @@ func serve(register func(*grpc.Server, *csiclient.CsiK8sClient)) error {
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (interface{}, error) {
-		log.Printf("%s({ %+v})", info.FullMethod, req)
+		log := log.FromContext(ctx).WithValues("method", info.FullMethod)
+		log.Info("gRPC entry", "request", req)
 		resp, err := handler(ctx, req)
 		if err == nil {
-			log.Printf("%s(...) --> { %+v}", info.FullMethod, resp)
+			log.Info("gRPC success", "response", resp)
 		} else {
-			log.Printf("%s(...) --> %+v", info.FullMethod, err)
+			log.Error(err, "gRPC failure")
 		}
 		return resp, err
 	}
@@ -75,9 +92,25 @@ func serve(register func(*grpc.Server, *csiclient.CsiK8sClient)) error {
 
 	register(server, client)
 
+	// Handle SIGTERM gracefully.
+
+	log := log.FromContext(context.Background())
+	c := make(chan os.Signal, 2)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	log.Info("registered for shutdown signals")
+	go func() {
+		<-c
+		log.Info("shutdown signal received, initiating graceful shutdown")
+		timer := time.AfterFunc(5*time.Second, func() {
+			log.Info("graceful shutdown taking too long, forcing stop")
+			server.Stop()
+		})
+		defer timer.Stop()
+		server.GracefulStop()
+		log.Info("server stopped gracefully")
+	}()
+
 	// run gRPC server
 
 	return server.Serve(listener)
-
-	// TODO: Handle SIGTERM gracefully.
 }

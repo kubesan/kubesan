@@ -4,7 +4,6 @@ package controller
 
 import (
 	"context"
-	"log"
 	"math"
 	"slices"
 	"strconv"
@@ -22,6 +21,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
@@ -140,6 +140,7 @@ func (s *ControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSn
 
 	// Delete() returns immediately so wait for the resource to go away
 
+	log := log.FromContext(ctx).WithValues("snapshot", req.SnapshotId)
 	err := wait.Backoff{
 		Duration: 500 * time.Millisecond,
 		Factor:   2, // exponential backoff
@@ -149,13 +150,13 @@ func (s *ControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSn
 	}.DelayFunc().Until(ctx, true, false, func(ctx context.Context) (bool, error) {
 		err := s.client.Get(ctx, types.NamespacedName{Name: req.SnapshotId, Namespace: config.Namespace}, snapshot)
 		if err == nil {
-			log.Printf("Snapshot \"%v\" still exists", req.SnapshotId)
+			log.Info("Snapshot still exists")
 			return false, nil // keep going
 		} else if errors.IsNotFound(err) {
-			log.Printf("Snapshot \"%v\" deleted", req.SnapshotId)
+			log.Info("Snapshot deleted")
 			return true, nil // done
 		} else {
-			log.Printf("Snapshot \"%v\" Get() failed: %+v", req.SnapshotId, err)
+			log.Error(err, "Snapshot Get() failed")
 			return false, err
 		}
 	})

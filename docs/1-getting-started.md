@@ -258,6 +258,16 @@ following parameters:
     possible to take snapshots of these volumes, and therefore not
     possible to clone from; and volume expansion is only possible
     offline.
+- wipePolicy: Optional, can be 'Full' (default) or 'UnsafeFast'.  This
+  parameter controls whether KubeSAN will guarantee that a new empty
+  Linear volume, as well as any new bytes added when extending that
+  volume, will already be wiped, or whether it is permitted to leave
+  the prior contents of the volume group visible.  Setting this
+  parameter to 'UnsafeFast' should only be done in a cluster where
+  there is no security risk from a prior use of the storage being made
+  visible to the new use.  Other modes may be added in the future.
+  For Thin volumes and filesystem, new contents always read as zero
+  without speed penalty, and regardless of the setting of this parameter.
 
 You can have several KubeSAN `StorageClass`es on the same cluster that
 are backed by different shared volume groups, or even multiple classes

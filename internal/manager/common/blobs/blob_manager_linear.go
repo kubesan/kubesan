@@ -35,17 +35,27 @@ func NewLinearBlobManager(workers *workers.Workers, vgName string) BlobManager {
 }
 
 type blkdiscardWork struct {
-	vgName string
-	lvName string
-	offset int64
+	vgName   string
+	lvName   string
+	offset   int64
+	skipWipe bool
 }
 
 func (w *blkdiscardWork) Run(ctx context.Context) error {
 	log := log.FromContext(ctx)
+	if w.skipWipe && w.offset > 0 {
+		return nil
+	}
 	return commands.WithLvmLvActivated(w.vgName, w.lvName, func() error {
 		path := fmt.Sprintf("/dev/%s/%s", w.vgName, w.lvName)
-		log.Info("blkdiscard worker zeroing LV", "path", path)
-		_, err := commands.RunOnHostContext(ctx, "blkdiscard", "--zeroout", "--offset", strconv.FormatInt(w.offset, 10), path)
+		args := []string{"blkdiscard", "--zeroout", "--offset",
+			strconv.FormatInt(w.offset, 10)}
+		if w.skipWipe {
+			args = append(args, "--length", "4Mi")
+		}
+		args = append(args, path)
+		log.Info("blkdiscard worker zeroing LV", "path", path, "command", args)
+		_, err := commands.RunOnHostContext(ctx, args...)
 		// To test long-running operations: _, err := commands.RunOnHostContext(ctx, "sleep", "30")
 		log.Info("blkdiscard worker finished", "path", path)
 		return err
@@ -58,7 +68,7 @@ func (m *LinearBlobManager) blkdiscardWorkName(name string) string {
 }
 
 // Create or expand a blob.
-func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64, owner client.Object) error {
+func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64, skipWipe bool, owner client.Object) error {
 	// This creates but does not resize.
 	_, err := commands.LvmLvCreateIdempotent(
 		"--devicesfile", m.vgName,
@@ -98,9 +108,10 @@ func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeByt
 		}
 
 		work := &blkdiscardWork{
-			vgName: m.vgName,
-			lvName: name,
-			offset: offset,
+			vgName:   m.vgName,
+			lvName:   name,
+			offset:   offset,
+			skipWipe: skipWipe,
 		}
 		err := m.workers.Run(m.blkdiscardWorkName(name), owner, work)
 		if err != nil {

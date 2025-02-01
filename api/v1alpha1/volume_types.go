@@ -29,6 +29,13 @@ type VolumeSpec struct {
 
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
+	// +kubebuilder:validation:Enum=Full;UnsafeFast
+	// +default:value="Full"
+	// +optional
+	WipePolicy VolumeWipePolicy `json:"wipePolicy,omitempty"`
+
+	// Should be set from creation and never updated.
+	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	// +required
 	Type VolumeType `json:"type"`
 
@@ -74,10 +81,14 @@ func (v *VolumeSpec) ReadOnly() bool {
 }
 
 type VolumeMode string
+type VolumeWipePolicy string
 
 const (
 	VolumeModeThin   VolumeMode = "Thin"
 	VolumeModeLinear VolumeMode = "Linear"
+
+	VolumeWipePolicyFull       VolumeWipePolicy = "Full"
+	VolumeWipePolicyUnsafeFast VolumeWipePolicy = "UnsafeFast"
 )
 
 // + TODO make this a proper discriminated union

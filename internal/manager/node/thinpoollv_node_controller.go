@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
@@ -36,6 +37,7 @@ func SetUpThinPoolLvNodeReconciler(mgr ctrl.Manager) error {
 	// profile.
 
 	return ctrl.NewControllerManagedBy(mgr).
+		WithOptions(controller.Options{MaxConcurrentReconciles: config.MaxConcurrentReconciles}).
 		For(&v1alpha1.ThinPoolLv{}).
 		Complete(r)
 }

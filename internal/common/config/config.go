@@ -45,6 +45,8 @@ var (
 
 	Scheme = runtime.NewScheme()
 
+	MaxConcurrentReconciles int
+
 	ErrCannotDetermineNamespace = errors.New("could not determine namespace from service account or WATCH_NAMESPACE env var")
 )
 
