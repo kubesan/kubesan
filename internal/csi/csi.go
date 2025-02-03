@@ -26,20 +26,20 @@ import (
 )
 
 func RunControllerPlugin() error {
-	return serve(func(server *grpc.Server, client *csiclient.CsiK8sClient) {
+	return serve(true, func(server *grpc.Server, client *csiclient.CsiK8sClient) {
 		csi.RegisterIdentityServer(server, &identity.IdentityServer{})
 		csi.RegisterControllerServer(server, controller.NewControllerServer(client))
 	})
 }
 
 func RunNodePlugin() error {
-	return serve(func(server *grpc.Server, client *csiclient.CsiK8sClient) {
+	return serve(false, func(server *grpc.Server, client *csiclient.CsiK8sClient) {
 		csi.RegisterIdentityServer(server, &identity.IdentityServer{})
 		csi.RegisterNodeServer(server, node.NewNodeServer(client))
 	})
 }
 
-func serve(register func(*grpc.Server, *csiclient.CsiK8sClient)) error {
+func serve(cluster bool, register func(*grpc.Server, *csiclient.CsiK8sClient)) error {
 	// Set up structured logging
 
 	opts := zap.Options{
@@ -52,7 +52,7 @@ func serve(register func(*grpc.Server, *csiclient.CsiK8sClient)) error {
 
 	// create Kubernetes client
 
-	client, err := csiclient.NewCsiK8sClient()
+	client, done, err := csiclient.NewCsiK8sClient(cluster)
 	if err != nil {
 		return err
 	}
@@ -106,7 +106,11 @@ func serve(register func(*grpc.Server, *csiclient.CsiK8sClient)) error {
 			server.Stop()
 		})
 		defer timer.Stop()
+		go func() {
+			client.Cancel()
+		}()
 		server.GracefulStop()
+		<-done
 		log.Info("server stopped gracefully")
 	}()
 
