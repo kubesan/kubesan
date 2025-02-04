@@ -51,7 +51,7 @@ func (w *blkdiscardWork) Run(ctx context.Context) error {
 		args := []string{"blkdiscard", "--zeroout", "--offset",
 			strconv.FormatInt(w.offset, 10)}
 		if w.skipWipe {
-			args = append(args, "--length", "4Mi")
+			args = append(args, "--length", strconv.Itoa(4*1024*1024))
 		}
 		args = append(args, path)
 		log.Info("blkdiscard worker zeroing LV", "path", path, "command", args)
