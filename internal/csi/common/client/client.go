@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -72,53 +73,52 @@ func (c *CsiK8sClient) Cancel() {
 
 // Updates `volume` with its last seen state in the cluster. Tries condition once before starting to watch.
 func (c *CsiK8sClient) WatchVolumeUntil(ctx context.Context, volume *v1alpha1.Volume, condition func() bool) error {
-	return c.TryWatchVolumeUntil(ctx, volume, func() (bool, error) { return condition(), nil })
-}
-
-// Updates `volume` with its last seen state in the cluster.
-func (c *CsiK8sClient) TryWatchVolumeUntil(ctx context.Context, volume *v1alpha1.Volume, condition func() (bool, error)) error {
-	if done, err := condition(); err != nil {
-		return err
-	} else if done {
-		return nil
-	}
-
-	log := log.FromContext(ctx).WithValues("volume", volume.Name)
-	return wait.Backoff{
-		Duration: 250 * time.Millisecond,
-		Factor:   1.4, // exponential backoff
-		Jitter:   0.1,
-		Steps:    math.MaxInt,
-		Cap:      3 * time.Second,
-	}.DelayFunc().Until(ctx, true, false, func(ctx context.Context) (bool, error) {
-		err := c.Get(ctx, client.ObjectKeyFromObject(volume), volume)
-		if err == nil {
-			log.Info("testing volume condition")
-			return condition()
-		} else if errors.IsNotFound(err) {
-			log.Info("awaiting volume creation")
-			return false, nil
-		} else {
-			log.Error(err, "get volume failed")
-			return false, err
+	return c.watchObjectUntil(ctx, volume, func(err error) (bool, error) {
+		if err != nil {
+			return false, client.IgnoreNotFound(err)
 		}
+		return condition(), nil
 	})
 }
 
 // Updates `snapshot` with its last seen state in the cluster. Tries condition once before starting to watch.
 func (c *CsiK8sClient) WatchSnapshotUntil(ctx context.Context, snapshot *v1alpha1.Snapshot, condition func() bool) error {
-	return c.TryWatchSnapshotUntil(ctx, snapshot, func() (bool, error) { return condition(), nil })
+	return c.watchObjectUntil(ctx, snapshot, func(err error) (bool, error) {
+		if err != nil {
+			return false, client.IgnoreNotFound(err)
+		}
+		return condition(), nil
+	})
 }
 
-// Updates `snapshot` with its last seen state in the cluster.
-func (c *CsiK8sClient) TryWatchSnapshotUntil(ctx context.Context, snapshot *v1alpha1.Snapshot, condition func() (bool, error)) error {
-	if done, err := condition(); err != nil {
+// Delete an object, and wait until the deletion is successful.
+func (c *CsiK8sClient) DeleteAndConfirm(ctx context.Context, object client.Object) error {
+	propagation := client.PropagationPolicy(metav1.DeletePropagationForeground)
+
+	if err := c.Delete(ctx, object, propagation); err != nil {
+		return client.IgnoreNotFound(err)
+	}
+
+	return c.watchObjectUntil(ctx, object, func(err error) (bool, error) {
+		if err == nil {
+			return false, nil
+		} else if errors.IsNotFound(err) {
+			return true, nil
+		} else {
+			return false, err
+		}
+	})
+}
+
+// Perform an exponential backoff wait on the given object until a condition is met.
+func (c *CsiK8sClient) watchObjectUntil(ctx context.Context, object client.Object, condition func(error) (bool, error)) error {
+	if done, err := condition(nil); err != nil {
 		return err
 	} else if done {
 		return nil
 	}
 
-	log := log.FromContext(ctx).WithValues("snapshot", snapshot.Name)
+	log := log.FromContext(ctx).WithValues("object", object.GetName())
 	return wait.Backoff{
 		Duration: 250 * time.Millisecond,
 		Factor:   1.4, // exponential backoff
@@ -126,16 +126,7 @@ func (c *CsiK8sClient) TryWatchSnapshotUntil(ctx context.Context, snapshot *v1al
 		Steps:    math.MaxInt,
 		Cap:      3 * time.Second,
 	}.DelayFunc().Until(ctx, true, false, func(ctx context.Context) (bool, error) {
-		err := c.Get(ctx, client.ObjectKeyFromObject(snapshot), snapshot)
-		if err == nil {
-			log.Info("testing snapshot condition")
-			return condition()
-		} else if errors.IsNotFound(err) {
-			log.Info("awaiting snapshot creation")
-			return false, nil
-		} else {
-			log.Error(err, "get snapshot failed")
-			return false, err
-		}
+		log.Info("testing condition")
+		return condition(c.Get(ctx, client.ObjectKeyFromObject(object), object))
 	})
 }

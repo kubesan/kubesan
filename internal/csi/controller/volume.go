@@ -5,11 +5,9 @@ package controller
 import (
 	"context"
 	"fmt"
-	"math"
 	"reflect"
 	"slices"
 	"strconv"
-	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -18,11 +16,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
@@ -426,35 +421,7 @@ func (s *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolu
 		},
 	}
 
-	propagation := client.PropagationPolicy(metav1.DeletePropagationForeground)
-
-	if err := s.client.Delete(ctx, volume, propagation); err != nil && !errors.IsNotFound(err) {
-		return nil, err
-	}
-
-	// Delete() returns immediately so wait for the resource to go away
-
-	log := log.FromContext(ctx).WithValues("volume", req.VolumeId)
-	err := wait.Backoff{
-		Duration: 500 * time.Millisecond,
-		Factor:   2, // exponential backoff
-		Jitter:   0.1,
-		Steps:    math.MaxInt,
-		Cap:      10 * time.Second,
-	}.DelayFunc().Until(ctx, true, false, func(ctx context.Context) (bool, error) {
-		err := s.client.Get(ctx, types.NamespacedName{Name: req.VolumeId, Namespace: config.Namespace}, volume)
-		if err == nil {
-			log.Info("Volume still exists")
-			return false, nil // keep going
-		} else if errors.IsNotFound(err) {
-			log.Info("Volume deleted")
-			return true, nil // done
-		} else {
-			log.Error(err, "Volume Get() failed")
-			return false, err
-		}
-	})
-	if err != nil {
+	if err := s.client.DeleteAndConfirm(ctx, volume); err != nil {
 		return nil, err
 	}
 
