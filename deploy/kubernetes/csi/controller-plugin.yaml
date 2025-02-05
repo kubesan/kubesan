@@ -14,6 +14,7 @@ metadata:
   name: csi-controller-plugin
   namespace: kubesan-system
 spec:
+  replicas: 2
   selector:
     matchLabels: &labels
       app.kubernetes.io/component: csi-controller-plugin
@@ -24,6 +25,16 @@ spec:
         kubectl.kubernetes.io/default-container: csi-plugin
     spec:
       serviceAccountName: csi-controller-plugin
+      topologySpreadConstraints:
+        - maxSkew: 1
+          minDomains: 2
+          whenUnsatisfiable: DoNotSchedule
+          topologyKey: kubernetes.io/hostname
+          nodeTaintsPolicy: Honor
+          labelSelector:
+            matchLabels: *labels
+          matchLabelKeys:
+            - pod-template-hash
       containers:
         - name: csi-plugin
           image: kubesan
@@ -76,6 +87,19 @@ spec:
             # See https://gitlab.com/kubesan/kubesan/-/issues/105:
             # - --extra-create-metadata  # to get PVC/PV info in CreateVolume()
             - --default-fstype=ext4 # default FSType so that SecurityContext fsGroup works
+            - --leader-election
+            - --http-endpoint=:8081
+          ports:
+            - containerPort: 8081
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 1
+            httpGet:
+              path: /healthz/leader-election
+              port: 8081
+            initialDelaySeconds: 10
+            timeoutSeconds: 10
+            periodSeconds: 20
           volumeMounts:
             - name: socket-dir
               mountPath: /run/csi
@@ -93,6 +117,19 @@ spec:
           args:
             # See https://gitlab.com/kubesan/kubesan/-/issues/105:
             # - --extra-create-metadata  # to get VS/VSC info in CreateSnapshot()
+            - --leader-election
+            - --http-endpoint=:8082
+          ports:
+            - containerPort: 8082
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 1
+            httpGet:
+              path: /healthz/leader-election
+              port: 8082
+            initialDelaySeconds: 10
+            timeoutSeconds: 10
+            periodSeconds: 20
           volumeMounts:
             - name: socket-dir
               mountPath: /run/csi
@@ -123,6 +160,19 @@ spec:
           image: registry.k8s.io/sig-storage/csi-external-health-monitor-controller:v0.14.0
           args:
             - "--enable-node-watcher=true"
+            - --leader-election
+            - --http-endpoint=:8083
+          ports:
+            - containerPort: 8083
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 1
+            httpGet:
+              path: /healthz/leader-election
+              port: 8083
+            initialDelaySeconds: 10
+            timeoutSeconds: 10
+            periodSeconds: 20
           volumeMounts:
             - name: socket-dir
               mountPath: /run/csi
@@ -139,6 +189,19 @@ spec:
           image: k8s.gcr.io/sig-storage/csi-resizer:v1.12.0
           args:
             - --handle-volume-inuse-error=true # online resize fails for linear
+            - --leader-election
+            - --http-endpoint=:8084
+          ports:
+            - containerPort: 8084
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 1
+            httpGet:
+              path: /healthz/leader-election
+              port: 8084
+            initialDelaySeconds: 10
+            timeoutSeconds: 10
+            periodSeconds: 20
           volumeMounts:
             - name: socket-dir
               mountPath: /run/csi

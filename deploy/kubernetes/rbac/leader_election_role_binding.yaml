@@ -13,3 +13,6 @@ subjects:
 - kind: ServiceAccount
   name: cluster-controller-manager
   namespace: kubesan-system
+- kind: ServiceAccount
+  name: csi-controller-plugin
+  namespace: kubesan-system

@@ -18,10 +18,11 @@ metadata:
 spec:
   restartPolicy: Never
   hostPID: true
-  # Must run on the node with csi-controller-plugin
+  # Must run on a node with csi-controller-plugin, but does not care
+  # if that pod won or lost any of the leader elections.
   nodeName: $(kubectl get pod --namespace kubesan-system \
         --selector app.kubernetes.io/component==csi-controller-plugin \
-        --output custom-columns=NODENAME:.spec.nodeName --no-headers)
+        --output custom-columns=NODENAME:.spec.nodeName --no-headers | head -n1)
   containers:
     - name: container
       image: $TEST_IMAGE
