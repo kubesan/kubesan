@@ -408,18 +408,31 @@ func validateCapacity(capacityRange *csi.CapacityRange, extentSize int64) (capac
 func (s *ControllerServer) DeleteVolume(ctx context.Context, req *csi.DeleteVolumeRequest) (*csi.DeleteVolumeResponse, error) {
 	// validate request
 
-	if req.VolumeId == "" {
-		return nil, status.Error(codes.InvalidArgument, "must specify volume id")
+	namespacedName, err := validate.ValidateVolumeID(req.VolumeId)
+	if err != nil {
+		return nil, err
+	}
+
+	// At present, we don't use secrets, so this should be empty.
+	if len(req.Secrets) > 0 {
+		return nil, status.Error(codes.InvalidArgument, "unexpected secrets")
+	}
+
+	// ensure volume is not currently staged
+
+	volume := &v1alpha1.Volume{}
+	err = s.client.Get(ctx, namespacedName, volume)
+	if errors.IsNotFound(err) {
+		return &csi.DeleteVolumeResponse{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(volume.Spec.AttachToNodes) > 0 {
+		return nil, status.Error(codes.FailedPrecondition, "volume is still staged")
 	}
 
 	// delete volume
-
-	volume := &v1alpha1.Volume{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      req.VolumeId,
-			Namespace: config.Namespace,
-		},
-	}
 
 	if err := s.client.DeleteAndConfirm(ctx, volume); err != nil {
 		return nil, err
@@ -465,6 +478,10 @@ func validateCapabilities(volume *v1alpha1.Volume, capabilities []*csi.VolumeCap
 // or validation request. Returns "" if compatible, or a string describing
 // an inconsistency if incompatible.
 func validateVolume(volume *v1alpha1.Volume, size int64, limit int64, source *v1alpha1.VolumeContents, capabilities []*csi.VolumeCapability, parameters map[string]string) string {
+	if volume.DeletionTimestamp != nil {
+		return "volume deletion is already in progress"
+	}
+
 	if size > volume.Spec.SizeBytes || (limit > 0 && limit < volume.Spec.SizeBytes) {
 		return "incompatible sizes"
 	}

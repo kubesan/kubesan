@@ -51,6 +51,10 @@ func (s *NodeServer) NodeStageVolume(ctx context.Context, req *csi.NodeStageVolu
 			return err
 		}
 
+		if volume.DeletionTimestamp != nil {
+			return status.Error(codes.FailedPrecondition, "volume deletion is already in progress")
+		}
+
 		if !slices.Contains(volume.Spec.AttachToNodes, config.LocalNodeName) {
 			volume.Spec.AttachToNodes = kubesanslices.AppendUnique(volume.Spec.AttachToNodes, config.LocalNodeName)
 
