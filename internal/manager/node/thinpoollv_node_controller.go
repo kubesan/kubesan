@@ -5,6 +5,7 @@ package node
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -158,20 +159,23 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinPoolLvActivation(ctx context.Con
 
 			for i := range thinPoolLv.Status.ThinLvs {
 				thinLvStatus := &thinPoolLv.Status.ThinLvs[i]
+				if thinLvStatus.State.Name == v1alpha1.ThinLvStatusStateNameRemoved {
+					continue
+				}
 
-				_, err := commands.Lvm(
+				output, err := commands.Lvm(
 					"lvchange",
 					"--devicesfile", thinPoolLv.Spec.VgName,
 					"--activate", "n",
 					fmt.Sprintf("%s/%s", thinPoolLv.Spec.VgName, thinLvStatus.Name),
 				)
 				if err != nil {
-					return thinPoolLvShouldBeActive, err
+					if strings.Contains(string(output.Combined), "ailed to find") {
+						// Ignore error if lv is already gone
+					} else {
+						return thinPoolLvShouldBeActive, err
+					}
 				}
-			}
-
-			for i := range thinPoolLv.Status.ThinLvs {
-				thinLvStatus := &thinPoolLv.Status.ThinLvs[i]
 
 				thinLvStatus.State = v1alpha1.ThinLvStatusState{
 					Name: v1alpha1.ThinLvStatusStateNameInactive,
