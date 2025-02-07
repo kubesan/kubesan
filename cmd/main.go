@@ -12,10 +12,10 @@ import (
 )
 
 func badUsage() {
-	fmt.Fprintf(os.Stderr, "usage: kubesan csi-controller-plugin\n")
-	fmt.Fprintf(os.Stderr, "       kubesan csi-node-plugin\n")
-	fmt.Fprintf(os.Stderr, "       kubesan cluster-controller-manager\n")
-	fmt.Fprintf(os.Stderr, "       kubesan node-controller-manager\n")
+	fmt.Fprintf(os.Stderr, "usage: kubesan csi-controller-plugin [options...]\n")
+	fmt.Fprintf(os.Stderr, "       kubesan csi-node-plugin [options...]\n")
+	fmt.Fprintf(os.Stderr, "       kubesan cluster-controller-manager [options...]\n")
+	fmt.Fprintf(os.Stderr, "       kubesan node-controller-manager [options...]\n")
 	os.Exit(2)
 }
 
@@ -26,7 +26,11 @@ func main() {
 
 	var err error
 
-	switch os.Args[1] {
+	// Shuffle out our non-option, so that flag.Parse works on rest of command line
+	flavor := os.Args[1]
+	os.Args = os.Args[1:]
+
+	switch flavor {
 	case "csi-controller-plugin":
 		err = csi.RunControllerPlugin()
 

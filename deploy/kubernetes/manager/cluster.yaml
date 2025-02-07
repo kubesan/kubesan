@@ -7,6 +7,7 @@ metadata:
   name: cluster-controller-manager
   namespace: kubesan-system
 spec:
+  replicas: 2
   selector:
     matchLabels: &labels
       app.kubernetes.io/component: cluster-controller-manager
@@ -19,6 +20,16 @@ spec:
       serviceAccountName: cluster-controller-manager
       terminationGracePeriodSeconds: 10
       hostPID: true
+      topologySpreadConstraints:
+        - maxSkew: 1
+          minDomains: 2
+          whenUnsatisfiable: DoNotSchedule
+          topologyKey: kubernetes.io/hostname
+          nodeTaintsPolicy: Honor
+          labelSelector:
+            matchLabels: *labels
+          matchLabelKeys:
+            - pod-template-hash
       containers:
         - name: manager
           image: kubesan
