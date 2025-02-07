@@ -26,14 +26,12 @@ func VolumeToThinLvName(volumeName string) string {
 }
 
 // Maps from ThinLvSpecState.Name to ThinLvStatusState.Name
-func SpecStateToStatusState(specStateName string) string {
+func specStateToStatusState(specStateName string) string {
 	switch specStateName {
 	case v1alpha1.ThinLvSpecStateNameInactive:
 		return v1alpha1.ThinLvStatusStateNameInactive
 	case v1alpha1.ThinLvSpecStateNameActive:
 		return v1alpha1.ThinLvStatusStateNameActive
-	case v1alpha1.ThinLvSpecStateNameRemoved:
-		return v1alpha1.ThinLvStatusStateNameRemoved
 	default:
 		return ""
 	}
@@ -58,15 +56,20 @@ func thinPoolLvNeedsActivation(thinPoolLv *v1alpha1.ThinPoolLv) bool {
 		thinLvSpec := &thinPoolLv.Spec.ThinLvs[i]
 		thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvSpec.Name)
 
-		// corresponding Status.ThinLvs[] element doesn't exist yet
+		// No corresponding Status.ThinLvs[] element.  Either this is
+		// creation (activation needed), or we just succeeded at
+		// removal (caller will compress the array later).
 
 		if thinLvStatus == nil {
+			if thinLvSpec.State.Name == v1alpha1.ThinLvSpecStateNameRemoved {
+				continue
+			}
 			return true
 		}
 
 		// thin LV is undergoing a state transition (e.g. creation/deletion/activation/deactivation)
 
-		if SpecStateToStatusState(thinLvSpec.State.Name) != thinLvStatus.State.Name {
+		if specStateToStatusState(thinLvSpec.State.Name) != thinLvStatus.State.Name {
 			return true
 		}
 
@@ -79,19 +82,6 @@ func thinPoolLvNeedsActivation(thinPoolLv *v1alpha1.ThinPoolLv) bool {
 		// extending the thin LV requires that the ThinPoolLv be active on a node
 
 		if thinLvSpec.SizeBytes > thinLvStatus.SizeBytes && !thinLvSpec.ReadOnly {
-			return true
-		}
-	}
-
-	for i := range thinPoolLv.Status.ThinLvs {
-		thinLvStatus := &thinPoolLv.Status.ThinLvs[i]
-
-		// Spec.ThinLvs[] element has been removed but corresponding
-		// Status.ThinLvs[] hasn't been cleaned up by ThinPoolLv node
-		// controller yet
-
-		if thinLvStatus.State.Name == v1alpha1.ThinLvStatusStateNameRemoved &&
-			thinPoolLv.Spec.FindThinLv(thinLvStatus.Name) == nil {
 			return true
 		}
 	}

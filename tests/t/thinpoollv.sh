@@ -16,7 +16,7 @@ delete_thin_lv() {
   {"op": "replace", "path": "/spec/thinLvs/$index/state/name", "value": "Removed"}
 ]
 "
-    ksan-poll 1 30 "[[ \"\$(kubectl get --namespace kubesan-system -o=jsonpath='{.status.thinLvs[?(@.name==\"$name\")].state.name}' thinpoollv thinpoollv)\" == \"Removed\" ]]"
+    ksan-poll 1 30 "[[ -z \"\$(kubectl get --namespace kubesan-system -o=jsonpath='{.status.thinLvs[?(@.name==\"$name\")].name}' thinpoollv thinpoollv)\" ]]"
 
     ksan-stage "Removing thin LV \"$name\" from Spec..."
     kubectl patch --namespace kubesan-system thinpoollv thinpoollv --type json --patch "
@@ -25,7 +25,6 @@ delete_thin_lv() {
   {"op": "remove", "path": "/spec/thinLvs/$index"}
 ]
 "
-    ksan-poll 1 30 "[[ -z \"\$(kubectl get --namespace kubesan-system -o=jsonpath='{.status.thinLvs[?(@.name==\"$name\")].name}' thinpoollv thinpoollv)\" ]]"
 }
 
 ksan-stage "Creating empty ThinPoolLv..."

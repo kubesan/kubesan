@@ -217,6 +217,7 @@ const (
 
 type ThinLvStatusState struct {
 	// +unionDiscriminator
+	// + TODO No need for Removed
 	// +kubebuilder:validation:Enum:="Inactive";"Active";"Removed"
 	// +required
 	Name string `json:"name"`
