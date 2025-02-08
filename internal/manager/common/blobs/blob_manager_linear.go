@@ -46,7 +46,7 @@ func (w *blkdiscardWork) Run(ctx context.Context) error {
 	if w.skipWipe && w.offset > 0 {
 		return nil
 	}
-	return commands.WithLvmLvActivated(w.vgName, w.lvName, func() error {
+	return commands.WithLvmLvActivated(w.vgName, w.lvName, true, func() error {
 		path := fmt.Sprintf("/dev/%s/%s", w.vgName, w.lvName)
 		args := []string{"blkdiscard", "--zeroout", "--offset",
 			strconv.FormatInt(w.offset, 10)}
