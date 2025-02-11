@@ -107,6 +107,7 @@ func (r *ThinPoolLvReconciler) reconcileDeleting(ctx context.Context, thinPoolLv
 
 func (r *ThinPoolLvReconciler) createThinPoolLv(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv) error {
 	_, err := commands.LvmLvCreateIdempotent(
+		"",
 		"--devicesfile", thinPoolLv.Spec.VgName,
 		"--activate", "n",
 		"--type", "thin-pool",

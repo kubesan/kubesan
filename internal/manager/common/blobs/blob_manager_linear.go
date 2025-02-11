@@ -71,6 +71,7 @@ func (m *LinearBlobManager) blkdiscardWorkName(name string) string {
 func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64, skipWipe bool, owner client.Object) error {
 	// This creates but does not resize.
 	_, err := commands.LvmLvCreateIdempotent(
+		"",
 		"--devicesfile", m.vgName,
 		"--activate", "n",
 		"--type", "linear",

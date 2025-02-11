@@ -15,6 +15,8 @@ import (
 
 	k8serror "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	"gitlab.com/kubesan/kubesan/internal/common/config"
 )
 
 type Output struct {
@@ -173,9 +175,33 @@ func Lvm(args ...string) (Output, error) {
 	return RunOnHost(append([]string{"lvm"}, args...)...)
 }
 
+// Munge a string into bytes suitable for lvchange --addtag.
+func munge(input string) string {
+	var sb strings.Builder
+	for _, b := range []byte(input) {
+		switch {
+		case b >= 'a' && b <= 'z':
+			fallthrough
+		case b >= 'A' && b <= 'Z':
+			fallthrough
+		case b >= '0' && b <= '9':
+			fallthrough
+		case b == '/' || b == '=' || b == '.' || b == '-' || b == '_':
+			sb.WriteByte(b)
+		default:
+			sb.WriteString(fmt.Sprintf("#%02X", b))
+		}
+	}
+	return sb.String()
+}
+
 // Call lvcreate, and filter out errors if device already exists.
-func LvmLvCreateIdempotent(args ...string) (Output, error) {
-	output, err := Lvm(append([]string{"lvcreate"}, args...)...)
+func LvmLvCreateIdempotent(binding string, args ...string) (Output, error) {
+	prefixArgs := []string{"lvcreate"}
+	if binding != "" {
+		prefixArgs = append(prefixArgs, "--addtag", config.Domain+"/binding="+munge(binding))
+	}
+	output, err := Lvm(append(prefixArgs, args...)...)
 
 	if err != nil && strings.Contains(string(output.Combined), "already exists") {
 		err = nil // suppress error for idempotency
