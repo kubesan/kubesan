@@ -86,7 +86,7 @@ func (m *ThinBlobManager) createThinPoolLv(ctx context.Context, name string, siz
 }
 
 // Add or update ThinLvSpec in ThinPoolLv.Spec.ThinLvs[]
-func (m *ThinBlobManager) createThinLv(ctx context.Context, oldThinPoolLv, thinPoolLv *v1alpha1.ThinPoolLv, name string, sizeBytes int64, contents *v1alpha1.ThinLvContents) error {
+func (m *ThinBlobManager) createThinLv(ctx context.Context, oldThinPoolLv, thinPoolLv *v1alpha1.ThinPoolLv, name string, binding string, sizeBytes int64, contents *v1alpha1.ThinLvContents) error {
 	readOnly := contents.ContentsType == v1alpha1.ThinLvContentsTypeSnapshot
 	thinLvSpec := thinPoolLv.Spec.FindThinLv(name)
 	thinLvStatus := thinPoolLv.Status.FindThinLv(name)
@@ -94,6 +94,7 @@ func (m *ThinBlobManager) createThinLv(ctx context.Context, oldThinPoolLv, thinP
 	if thinLvSpec == nil {
 		thinLvSpec = &v1alpha1.ThinLvSpec{
 			Name:      name,
+			Binding:   binding,
 			Contents:  *contents,
 			ReadOnly:  readOnly,
 			SizeBytes: sizeBytes,
@@ -147,7 +148,7 @@ func (m *ThinBlobManager) forgetRemovedThinLv(ctx context.Context, thinPoolLv *v
 }
 
 // Create or expand a thin volume blob within the manager's pool.
-func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64, skipWipe bool, owner client.Object) error {
+func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, binding string, sizeBytes int64, skipWipe bool, owner client.Object) error {
 	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
 
 	thinPoolLv, err := m.createThinPoolLv(ctx, name, sizeBytes, owner)
@@ -159,7 +160,7 @@ func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes
 
 	thinLvName := thinpoollv.VolumeToThinLvName(name)
 	contents := &v1alpha1.ThinLvContents{ContentsType: v1alpha1.ThinLvContentsTypeEmpty}
-	err = m.createThinLv(ctx, oldThinPoolLv, thinPoolLv, thinLvName, sizeBytes, contents)
+	err = m.createThinLv(ctx, oldThinPoolLv, thinPoolLv, thinLvName, binding, sizeBytes, contents)
 	if err != nil {
 		log.Error(err, "CreateBlob createThinLv failed")
 		return err
@@ -201,7 +202,7 @@ func (m *ThinBlobManager) GetSize(ctx context.Context, name string) (int64, erro
 	return thinLvStatus.SizeBytes, nil
 }
 
-func (m *ThinBlobManager) SnapshotBlob(ctx context.Context, name string, sourceName string, owner client.Object) error {
+func (m *ThinBlobManager) SnapshotBlob(ctx context.Context, name string, binding string, sourceName string, owner client.Object) error {
 	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
 
 	log.Info("SnapshotBlob entered", "name", name)
@@ -233,7 +234,7 @@ func (m *ThinBlobManager) SnapshotBlob(ctx context.Context, name string, sourceN
 		}}
 	// Snapshots are sized at the time of lvcreate, so we don't need
 	// to specify a size in the spec.
-	err = m.createThinLv(ctx, oldThinPoolLv, thinPoolLv, thinLvName, 0, contents)
+	err = m.createThinLv(ctx, oldThinPoolLv, thinPoolLv, thinLvName, binding, 0, contents)
 	if err != nil {
 		log.Error(err, "SnapshotBlob createThinLv failed")
 		return err

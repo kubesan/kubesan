@@ -53,24 +53,39 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 	case len(req.Secrets) > 0:
 		return nil, status.Error(codes.InvalidArgument, "unexpected secrets")
 
-	// At present, we don't support any parameters, so this should
-	// be empty.  Note that passing --extra-create-metadata in
-	// controller-plugin.yaml would change this situation, but our
-	// current design does not need to get the VolumeSnapshot object.
-	// See https://gitlab.com/kubesan/kubesan/-/issues/105.
+	// At present, we only expect parameters synthesized by
+	// --extra-create-metadata in controller-plugin.yaml, to get at
+	// the VS/VSC name and namespace.
 	case len(req.Parameters) > 0:
-		return nil, status.Error(codes.InvalidArgument, "unexpected parameters")
+		for key := range req.Parameters {
+			switch key {
+			default:
+				return nil, status.Error(codes.InvalidArgument, "unexpected parameters")
+			case "csi.storage.k8s.io/volumesnapshot/name":
+			case "csi.storage.k8s.io/volumesnapshot/namespace":
+			case "csi.storage.k8s.io/volumesnapshotcontent/name":
+			}
+		}
+	}
+
+	name := validate.SafeName(req.Name, "snapshot")
+	binding := req.Name
+	if binding == name {
+		vsNamespace := req.Parameters["csi.storage.k8s.io/volumesnapshot/namespace"]
+		vsName := req.Parameters["csi.storage.k8s.io/volumesnapshot/name"]
+		binding = vsNamespace + "/" + vsName
 	}
 
 	// create snapshot
 
 	snapshot := &v1alpha1.Snapshot{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      validate.SafeName(req.Name, "snapshot"),
+			Name:      name,
 			Namespace: config.Namespace,
 		},
 		Spec: v1alpha1.SnapshotSpec{
 			VgName:       volume.Spec.VgName,
+			Binding:      binding,
 			SourceVolume: req.SourceVolumeId,
 		},
 	}

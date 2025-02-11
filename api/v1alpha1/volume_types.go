@@ -21,6 +21,12 @@ type VolumeSpec struct {
 	// +required
 	VgName string `json:"vgName"`
 
+	// Should be set from creation and never updated, if available.
+	// +kubebuilder:validation:XValidation:rule=oldSelf==self
+	// +kubebuilder:validation:MaxLength=256
+	// +optional
+	Binding string `json:"binding,omitempty"`
+
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	// +kubebuilder:validation:Enum=Thin;Linear
@@ -227,6 +233,7 @@ func (v *VolumeStatus) IsAttachedToNode(node string) bool {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="VG",type=string,JSONPath=`.spec.vgName`,description='VG owning the volume'
 // +kubebuilder:printcolumn:name="Path",type=string,JSONPath=`.status.path`,description='Path to volume in nodes where it is active',priority=1
+// +kubebuilder:printcolumn:name="Binding",type=string,JSONPath=`.spec.binding`,description='PVC object bound to this volume',priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`,description='Time since resource was created'
 // +kubebuilder:printcolumn:name="Available",type=date,JSONPath=`.status.conditions[?(@.type=="Available")].lastTransitionTime`,description='Time since last volume creation or expansion'
 // +kubebuilder:printcolumn:name="Primary Node",type=string,JSONPath=`.status.attachedToNodes[0]`,description='Primary node where volume is currently active'

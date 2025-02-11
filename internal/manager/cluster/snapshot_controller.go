@@ -74,7 +74,7 @@ func (r *SnapshotReconciler) reconcileNotDeleting(ctx context.Context, blobMgr b
 	if !meta.IsStatusConditionTrue(snapshot.Status.Conditions, v1alpha1.SnapshotConditionAvailable) {
 		log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
-		err := blobMgr.SnapshotBlob(ctx, snapshot.Name, snapshot.Spec.SourceVolume, snapshot)
+		err := blobMgr.SnapshotBlob(ctx, snapshot.Name, snapshot.Spec.Binding, snapshot.Spec.SourceVolume, snapshot)
 		if err != nil {
 			return err
 		}

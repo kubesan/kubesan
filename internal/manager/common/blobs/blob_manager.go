@@ -23,7 +23,7 @@ type BlobManager interface {
 	//
 	// An owner reference may be added from the given owner to a dependent
 	// resource associated with the new blob.
-	CreateBlob(ctx context.Context, name string, sizeBytes int64, skipWipe bool, owner client.Object) error
+	CreateBlob(ctx context.Context, name string, binding string, sizeBytes int64, skipWipe bool, owner client.Object) error
 
 	// RemoveBlob removes a blob if it exists. No error is returned if the
 	// blob does not exist. An owner reference may be removed from the
@@ -35,7 +35,7 @@ type BlobManager interface {
 	//
 	// An owner reference may be added from the given owner to a dependent
 	// resource associated with the snapshot.
-	SnapshotBlob(ctx context.Context, name string, sourceName string, owner client.Object) error
+	SnapshotBlob(ctx context.Context, name string, binding string, sourceName string, owner client.Object) error
 
 	// ActivateBlobForCloneSource activates a data source blob so it can be
 	// cloned. The owner may be updated to record that it depends on the
