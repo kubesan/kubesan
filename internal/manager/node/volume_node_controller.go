@@ -491,11 +491,11 @@ func (r *VolumeNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			err = errors.NewBadRequest("invalid volume mode for data population")
 		}
 
-		if _, ok := err.(*util.WatchPending); ok {
-			log.Info("reconcile waiting for Watch during data population")
+		if watch, ok := err.(*util.WatchPending); ok {
+			log.Info("reconcile waiting for Watch during data population", "why", watch.Why)
 			return ctrl.Result{}, nil // wait until Watch triggers
 		}
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, err
 	}
 
 	// check if ready for operation
