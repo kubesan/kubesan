@@ -104,7 +104,7 @@ type ThinLvSpecState struct {
 	// +unionDiscriminator
 	// +kubebuilder:validation:Enum:="Inactive";"Active";"Removed"
 	// +required
-	// + TODO add validation rule preventing transitions out of "Removed" state
+	// +kubebuilder:validation:XValidation:rule=`oldSelf=="Removed"?self=="Removed":true`
 	Name string `json:"name"`
 }
 
@@ -217,6 +217,7 @@ const (
 
 type ThinLvStatusState struct {
 	// +unionDiscriminator
+	// + TODO No need for Removed
 	// +kubebuilder:validation:Enum:="Inactive";"Active";"Removed"
 	// +required
 	Name string `json:"name"`

@@ -5,7 +5,9 @@ package node
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -88,16 +90,18 @@ func (r *ThinPoolLvNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// only continue when this node is the active node and we're not undergoing deletion
 
-	if thinPoolLv.DeletionTimestamp != nil || thinPoolLv.Spec.ActiveOnNode != config.LocalNodeName {
+	if (thinPoolLv.DeletionTimestamp != nil && len(thinPoolLv.Status.ThinLvs) == 0) || thinPoolLv.Spec.ActiveOnNode != config.LocalNodeName {
 		log.Info("ThinPoolLv is not active on this node or is being deleted")
 		return ctrl.Result{}, nil
 	}
 
 	log.Info("ThinPoolLv is active on this node, proceeding")
 
-	err = r.reconcileThinLvCreation(ctx, thinPoolLv)
-	if err != nil {
-		return ctrl.Result{}, err
+	if thinPoolLv.DeletionTimestamp == nil {
+		err = r.reconcileThinLvCreation(ctx, thinPoolLv)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 	}
 
 	err = r.reconcileThinLvActivations(ctx, thinPoolLv)
@@ -115,7 +119,7 @@ func (r *ThinPoolLvNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 // Returns true if the thin-pool should be active
 func (r *ThinPoolLvNodeReconciler) reconcileThinPoolLvActivation(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv) (bool, error) {
-	thinPoolLvShouldBeActive := thinPoolLv.DeletionTimestamp == nil &&
+	thinPoolLvShouldBeActive :=
 		kubesanslices.Any(thinPoolLv.Spec.ThinLvs, func(spec v1alpha1.ThinLvSpec) bool { return spec.State.Name == v1alpha1.ThinLvSpecStateNameActive })
 
 	if thinPoolLvShouldBeActive {
@@ -159,19 +163,19 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinPoolLvActivation(ctx context.Con
 			for i := range thinPoolLv.Status.ThinLvs {
 				thinLvStatus := &thinPoolLv.Status.ThinLvs[i]
 
-				_, err := commands.Lvm(
+				output, err := commands.Lvm(
 					"lvchange",
 					"--devicesfile", thinPoolLv.Spec.VgName,
 					"--activate", "n",
 					fmt.Sprintf("%s/%s", thinPoolLv.Spec.VgName, thinLvStatus.Name),
 				)
 				if err != nil {
-					return thinPoolLvShouldBeActive, err
+					if strings.Contains(string(output.Combined), "ailed to find") {
+						// Ignore error if lv is already gone
+					} else {
+						return thinPoolLvShouldBeActive, err
+					}
 				}
-			}
-
-			for i := range thinPoolLv.Status.ThinLvs {
-				thinLvStatus := &thinPoolLv.Status.ThinLvs[i]
 
 				thinLvStatus.State = v1alpha1.ThinLvStatusState{
 					Name: v1alpha1.ThinLvStatusStateNameInactive,
@@ -211,6 +215,7 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinPoolLvActivation(ctx context.Con
 
 func (r *ThinPoolLvNodeReconciler) reconcileThinLvDeletion(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv) error {
 	needUpdate := false
+	log := log.FromContext(ctx)
 
 	// remove thin LVs from thin-pool that have been marked for removal in Spec.ThinLvs[]
 
@@ -220,7 +225,6 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinLvDeletion(ctx context.Context, 
 			continue
 		}
 
-		log := log.FromContext(ctx)
 		log.Info("Deleting", "thin LV", thinLvSpec.Name)
 
 		err := r.removeThinLv(ctx, thinPoolLv, thinLvSpec.Name)
@@ -228,46 +232,30 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinLvDeletion(ctx context.Context, 
 			return err
 		}
 
-		thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvSpec.Name)
-		if thinLvStatus == nil {
-			// This shouldn't happen since ThinLvStatus is set up
-			// during thin LV creation, but just in case...
-			thinLvStatus := v1alpha1.ThinLvStatus{
-				Name: thinLvSpec.Name,
-				State: v1alpha1.ThinLvStatusState{
-					Name: v1alpha1.ThinLvStatusStateNameRemoved,
-				},
-			}
-
-			thinPoolLv.Status.ThinLvs = append(thinPoolLv.Status.ThinLvs, thinLvStatus)
-		} else {
-			thinLvStatus.State = v1alpha1.ThinLvStatusState{
-				Name: v1alpha1.ThinLvStatusStateNameRemoved,
-			}
-		}
-
 		needUpdate = true
 	}
 
-	// drop removed thin LVs from Status.ThinLvs[] that no longer appear in Spec.ThinLvs[]
+	if !needUpdate {
+		return nil
+	}
+
+	// drop thin LVs from Status.ThinLvs[] that were removed by Spec.ThinLvs[]
 
 	newThinLvs := make([]v1alpha1.ThinLvStatus, 0, len(thinPoolLv.Spec.ThinLvs))
 	for i := 0; i < len(thinPoolLv.Status.ThinLvs); i++ {
 		thinLvStatus := &thinPoolLv.Status.ThinLvs[i]
-		if thinLvStatus.State.Name == v1alpha1.ThinLvStatusStateNameRemoved && thinPoolLv.Spec.FindThinLv(thinLvStatus.Name) == nil {
-			needUpdate = true // a thin LV was dropped
-		} else {
+		thinLvSpec := thinPoolLv.Spec.FindThinLv(thinLvStatus.Name)
+		if thinLvSpec == nil {
+			err := errors.NewBadRequest(fmt.Sprintf("spec for volume \"%s\" went missing without requesting state Removed", thinLvStatus.Name))
+			log.Error(err, "refusing to remove ThinLv")
+			return err
+		} else if thinLvSpec.State.Name != v1alpha1.ThinLvSpecStateNameRemoved {
 			newThinLvs = append(newThinLvs, *thinLvStatus)
 		}
 	}
 	thinPoolLv.Status.ThinLvs = newThinLvs
 
-	if needUpdate {
-		if err := r.statusUpdate(ctx, thinPoolLv); err != nil {
-			return err
-		}
-	}
-	return nil
+	return r.statusUpdate(ctx, thinPoolLv)
 }
 
 // Handles both LV creation and expansion
@@ -277,7 +265,9 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinLvCreation(ctx context.Context, 
 		thinLvSpec := &thinPoolLv.Spec.ThinLvs[i]
 		thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvSpec.Name)
 
-		if thinLvStatus == nil {
+		if thinLvSpec.State.Name == v1alpha1.ThinLvSpecStateNameRemoved {
+			// nothing to do here
+		} else if thinLvStatus == nil {
 			log.Info("Creating", "thin LV", thinLvSpec.Name)
 
 			err := r.createThinLv(ctx, thinPoolLv, thinLvSpec)

@@ -94,36 +94,15 @@ func (r *ThinPoolLvReconciler) reconcileDeleting(ctx context.Context, thinPoolLv
 		return nil
 	}
 
-	// remove LVM thin LVs
-
-	for i := range thinPoolLv.Status.ThinLvs {
-		thinLv := &thinPoolLv.Status.ThinLvs[i]
-
-		if thinLv.State.Name != v1alpha1.ThinLvStatusStateNameInactive && thinLv.State.Name != v1alpha1.ThinLvStatusStateNameRemoved {
-			return nil // try again when the LV becomes inactive
-		}
-
-		err := r.removeThinLv(thinPoolLv, thinLv.Name)
-		if err != nil {
-			return err
-		}
-	}
+	// wait for all ThinLvs to be removed
 
 	if len(thinPoolLv.Status.ThinLvs) > 0 {
-		thinPoolLv.Status.ThinLvs = []v1alpha1.ThinLvStatus{}
-		if err := r.statusUpdate(ctx, thinPoolLv); err != nil {
-			return err
-		}
+		return nil
 	}
 
 	// remove LVM thin pool LV
 
-	err := r.removeThinPoolLv(ctx, thinPoolLv)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return r.removeThinPoolLv(ctx, thinPoolLv)
 }
 
 func (r *ThinPoolLvReconciler) createThinPoolLv(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv) error {
@@ -171,14 +150,6 @@ func (r *ThinPoolLvReconciler) removeThinPoolLv(ctx context.Context, thinPoolLv 
 	}
 
 	return nil
-}
-
-func (r *ThinPoolLvReconciler) removeThinLv(thinPoolLv *v1alpha1.ThinPoolLv, thinLvName string) error {
-	_, err := commands.LvmLvRemoveIdempotent(
-		"--devicesfile", thinPoolLv.Spec.VgName,
-		fmt.Sprintf("%s/%s", thinPoolLv.Spec.VgName, thinLvName),
-	)
-	return err
 }
 
 func (r *ThinPoolLvReconciler) statusUpdate(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv) error {

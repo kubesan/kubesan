@@ -340,10 +340,14 @@ func LvmSize(vgName string, lvName string) (int64, error) {
 }
 
 // Calls a function with an LV activated temporarily
-func WithLvmLvActivated(vgName string, lvName string, op func() error) (err error) {
+func WithLvmLvActivated(vgName string, lvName string, shared bool, op func() error) (err error) {
 	vgLvName := fmt.Sprintf("%s/%s", vgName, lvName)
+	mode := "ey"
+	if shared {
+		mode = "sy"
+	}
 
-	_, err = Lvm("lvchange", "--devicesfile", vgName, "--activate", "y", vgLvName)
+	_, err = Lvm("lvchange", "--devicesfile", vgName, "--activate", mode, vgLvName)
 	if err != nil {
 		return err
 	}

@@ -6,20 +6,25 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 
 	"k8s.io/mount-utils"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 
+	"gitlab.com/kubesan/kubesan/api/v1alpha1"
+	"gitlab.com/kubesan/kubesan/internal/common/config"
 	"gitlab.com/kubesan/kubesan/internal/csi/common/validate"
 )
 
 func (s *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
 	// validate request
 
-	if _, err := validate.ValidateVolumeID(req.VolumeId); err != nil {
+	namespacedName, err := validate.ValidateVolumeID(req.VolumeId)
+	if err != nil {
 		return nil, err
 	}
 
@@ -38,6 +43,28 @@ func (s *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublish
 	if err := validate.ValidateVolumeCapability(req.VolumeCapability); err != nil {
 		return nil, err
 	}
+
+	// Check that volume still exists
+
+	volume := &v1alpha1.Volume{}
+	err = s.client.Get(ctx, namespacedName, volume)
+	if k8serrors.IsNotFound(err) {
+		return nil, status.Error(codes.NotFound, "volume not found")
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	if !slices.Contains(volume.Spec.AttachToNodes, config.LocalNodeName) {
+		return nil, status.Error(codes.FailedPrecondition, "volume is not staged on node")
+	}
+
+	if volume.DeletionTimestamp != nil {
+		return nil, status.Error(codes.FailedPrecondition, "volume deletion is already in progress")
+	}
+	// TODO check that volume_capability and readonly are compatible
+
+	// Proceed with publishing
 
 	if req.VolumeCapability.GetMount() != nil {
 		// create bind mount for Filesystem volumes
@@ -77,13 +104,16 @@ func (s *NodeServer) NodePublishVolume(ctx context.Context, req *csi.NodePublish
 func (s *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	// validate request
 
-	if _, err := validate.ValidateVolumeID(req.VolumeId); err != nil {
+	namespacedName, err := validate.ValidateVolumeID(req.VolumeId)
+	if err != nil {
 		return nil, err
 	}
 
 	if req.TargetPath == "" {
 		return nil, status.Error(codes.InvalidArgument, "must specify target path")
 	}
+
+	// Proceed with unmounting
 
 	isMountPoint, err := s.mounter.IsMountPoint(req.TargetPath)
 	if err == nil && isMountPoint {
@@ -100,6 +130,17 @@ func (s *NodeServer) NodeUnpublishVolume(ctx context.Context, req *csi.NodeUnpub
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return nil, err
 		}
+	}
+
+	// Check that volume still exists
+
+	volume := &v1alpha1.Volume{}
+	err = s.client.Get(ctx, namespacedName, volume)
+	if k8serrors.IsNotFound(err) {
+		return nil, status.Error(codes.NotFound, "volume not found")
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	// success

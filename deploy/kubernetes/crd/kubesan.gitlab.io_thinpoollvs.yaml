@@ -141,6 +141,8 @@ spec:
                           - Active
                           - Removed
                           type: string
+                          x-kubernetes-validations:
+                          - rule: oldSelf=="Removed"?self=="Removed":true
                       required:
                       - name
                       type: object

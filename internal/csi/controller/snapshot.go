@@ -118,6 +118,11 @@ func (s *ControllerServer) DeleteSnapshot(ctx context.Context, req *csi.DeleteSn
 		return nil, err
 	}
 
+	// At present, we don't use secrets, so this should be empty.
+	if len(req.Secrets) > 0 {
+		return nil, status.Error(codes.InvalidArgument, "unexpected secrets")
+	}
+
 	// delete snapshot
 
 	snapshot := &v1alpha1.Snapshot{

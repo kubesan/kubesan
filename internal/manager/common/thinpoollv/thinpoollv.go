@@ -9,14 +9,13 @@ import (
 	"fmt"
 	"reflect"
 
+	"k8s.io/apimachinery/pkg/api/errors"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
 	"gitlab.com/kubesan/kubesan/internal/manager/common/util"
-
-	"k8s.io/apimachinery/pkg/api/errors"
-
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 // Returns the thin LV name given the volume's name. This is necessary because
@@ -26,26 +25,26 @@ func VolumeToThinLvName(volumeName string) string {
 }
 
 // Maps from ThinLvSpecState.Name to ThinLvStatusState.Name
-func SpecStateToStatusState(specStateName string) string {
+func specStateToStatusState(specStateName string) string {
 	switch specStateName {
 	case v1alpha1.ThinLvSpecStateNameInactive:
 		return v1alpha1.ThinLvStatusStateNameInactive
 	case v1alpha1.ThinLvSpecStateNameActive:
 		return v1alpha1.ThinLvStatusStateNameActive
-	case v1alpha1.ThinLvSpecStateNameRemoved:
-		return v1alpha1.ThinLvStatusStateNameRemoved
 	default:
 		return ""
 	}
 }
 
-// Returns true if the ThinPoolLv should be active on a node
-func thinPoolLvNeedsActivation(thinPoolLv *v1alpha1.ThinPoolLv) bool {
+// Returns true if the ThinPoolLv should be active on a node.
+// It is an error to request a new ThinLv if the pool is marked for deletion.
+func thinPoolLvNeedsActivation(thinPoolLv *v1alpha1.ThinPoolLv) (bool, error) {
 	// Cases that have been considered:
 	// 1. Thin LV creation
 	// 2. Thin LV deletion
 	// 3. Thin LV activation
 	// 4. Thin LV extension
+	// 5. Thin pool marked for deletion
 	//
 	// Update this list when you change which cases are handled by this
 	// function. That way it will be easier to identify what still needs to
@@ -58,45 +57,40 @@ func thinPoolLvNeedsActivation(thinPoolLv *v1alpha1.ThinPoolLv) bool {
 		thinLvSpec := &thinPoolLv.Spec.ThinLvs[i]
 		thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvSpec.Name)
 
-		// corresponding Status.ThinLvs[] element doesn't exist yet
+		// No corresponding Status.ThinLvs[] element.  Either this is
+		// creation (activation needed), or we just succeeded at
+		// removal (caller will compress the array later).
 
 		if thinLvStatus == nil {
-			return true
+			if thinLvSpec.State.Name == v1alpha1.ThinLvSpecStateNameRemoved {
+				continue
+			}
+			if thinPoolLv.DeletionTimestamp != nil {
+				return false, errors.NewBadRequest("cannot create a new ThinLV in a pool marked for deletion")
+			}
+			return true, nil
 		}
 
 		// thin LV is undergoing a state transition (e.g. creation/deletion/activation/deactivation)
 
-		if SpecStateToStatusState(thinLvSpec.State.Name) != thinLvStatus.State.Name {
-			return true
+		if specStateToStatusState(thinLvSpec.State.Name) != thinLvStatus.State.Name {
+			return true, nil
 		}
 
 		// thin LV is explicitly activated
 
 		if thinLvSpec.State.Name == v1alpha1.ThinLvSpecStateNameActive {
-			return true
+			return true, nil
 		}
 
 		// extending the thin LV requires that the ThinPoolLv be active on a node
 
 		if thinLvSpec.SizeBytes > thinLvStatus.SizeBytes && !thinLvSpec.ReadOnly {
-			return true
+			return true, nil
 		}
 	}
 
-	for i := range thinPoolLv.Status.ThinLvs {
-		thinLvStatus := &thinPoolLv.Status.ThinLvs[i]
-
-		// Spec.ThinLvs[] element has been removed but corresponding
-		// Status.ThinLvs[] hasn't been cleaned up by ThinPoolLv node
-		// controller yet
-
-		if thinLvStatus.State.Name == v1alpha1.ThinLvStatusStateNameRemoved &&
-			thinPoolLv.Spec.FindThinLv(thinLvStatus.Name) == nil {
-			return true
-		}
-	}
-
-	return false
+	return false, nil
 }
 
 // Check whether work is pending that needs thin-pool activation. If yes,
@@ -111,8 +105,11 @@ func thinPoolLvNeedsActivation(thinPoolLv *v1alpha1.ThinPoolLv) bool {
 // when thinPoolLv.Spec.ActiveOnNode is clear. The thin-pool must also be
 // deactivated once work has finished so it doesn't stay activated on a node
 // where they are not needed.
-func recalcActiveOnNode(thinPoolLv *v1alpha1.ThinPoolLv) {
-	needsActivation := thinPoolLvNeedsActivation(thinPoolLv)
+func recalcActiveOnNode(thinPoolLv *v1alpha1.ThinPoolLv) error {
+	needsActivation, err := thinPoolLvNeedsActivation(thinPoolLv)
+	if err != nil {
+		return err
+	}
 
 	if needsActivation && thinPoolLv.Spec.ActiveOnNode == "" {
 		// TODO replace with better node selection policy?
@@ -121,13 +118,6 @@ func recalcActiveOnNode(thinPoolLv *v1alpha1.ThinPoolLv) {
 
 	if !needsActivation && thinPoolLv.Spec.ActiveOnNode != "" {
 		thinPoolLv.Spec.ActiveOnNode = ""
-	}
-
-	if thinPoolLv.DeletionTimestamp != nil {
-		// Once deletion is requested, the currently-active
-		// node (if any) will automatically deactivate, and
-		// then the cluster reconciler will take over.
-		thinPoolLv.Spec.ActiveOnNode = thinPoolLv.Status.ActiveOnNode
 	}
 
 	if thinPoolLv.Status.ActiveOnNode != "" && thinPoolLv.Spec.ActiveOnNode != thinPoolLv.Status.ActiveOnNode {
@@ -141,6 +131,7 @@ func recalcActiveOnNode(thinPoolLv *v1alpha1.ThinPoolLv) {
 			}
 		}
 	}
+	return nil
 }
 
 // Recalculate Spec.ActiveOnNode and invoke client.Update() for thinPoolLv
@@ -153,16 +144,19 @@ func UpdateThinPoolLv(ctx context.Context, client client.Client, oldThinPoolLv, 
 		former = oldThinPoolLv.Spec.ActiveOnNode
 	}
 
-	recalcActiveOnNode(thinPoolLv)
+	if err := recalcActiveOnNode(thinPoolLv); err != nil {
+		return err
+	}
 	if reflect.DeepEqual(oldThinPoolLv, thinPoolLv) {
 		log.Info("ThinPoolLv update not needed", "Spec.ActiveOnNode", thinPoolLv.Spec.ActiveOnNode, "Status.ActiveOnNode", thinPoolLv.Status.ActiveOnNode)
 		return nil
 	}
 	log.Info("Updating ThinPoolLv", "former", former, "preferred", preferred, "Spec.ActiveOnNode", thinPoolLv.Spec.ActiveOnNode, "Status.ActiveOnNode", thinPoolLv.Status.ActiveOnNode)
-	if oldThinPoolLv != nil {
+	err := client.Update(ctx, thinPoolLv)
+	if err == nil && oldThinPoolLv != nil {
 		thinPoolLv.DeepCopyInto(oldThinPoolLv)
 	}
-	return client.Update(ctx, thinPoolLv)
+	return err
 }
 
 func ActivateThinLv(ctx context.Context, client client.Client, oldThinPoolLv, thinPoolLv *v1alpha1.ThinPoolLv, name string) error {

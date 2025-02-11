@@ -99,7 +99,7 @@ __wait_kcli_cluster() {
             timeout=$(( timeout - 1))
             sleep 1
         else
-            __log_green "Cluster is fully operartional..."
+            __log_green "Cluster is fully operational..."
             return 0
         fi
     done
