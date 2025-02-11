@@ -36,16 +36,6 @@ const (
 )
 
 func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolumeRequest) (*csi.CreateVolumeResponse, error) {
-	// Note that passing --extra-create-metadata in
-	// controller-plugin.yaml would give us access to the
-	// PersistentVolumeClaim object, but our current design does
-	// not need it.
-	// See https://gitlab.com/kubesan/kubesan/-/issues/105.
-	// pvName, err := getParameter("csi.storage.k8s.io/pv/name")
-	// if err != nil {
-	// 	return nil, err
-	// }
-
 	// The easiest way to reject unknown parameters is to see if a
 	// copy of only known parameters is the same length.
 	knownParameters := copyKnownParameters(req.Parameters)
@@ -108,6 +98,12 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 	//
 	// See https://kubernetes.io/docs/concepts/overview/working-with-objects/names/
 	name := validate.SafeName(req.Name, "pvc")
+	binding := req.Name
+	if binding == name {
+		pvcNamespace := req.Parameters["csi.storage.k8s.io/pvc/namespace"]
+		pvcName := req.Parameters["csi.storage.k8s.io/pvc/name"]
+		binding = pvcNamespace + "/" + pvcName
+	}
 
 	volume := &v1alpha1.Volume{
 		ObjectMeta: metav1.ObjectMeta{
@@ -116,6 +112,7 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 		},
 		Spec: v1alpha1.VolumeSpec{
 			VgName:      lvmVolumeGroup,
+			Binding:     binding,
 			Mode:        volumeMode,
 			WipePolicy:  wipePolicy,
 			Type:        *volumeType,
@@ -566,9 +563,17 @@ func (s *ControllerServer) ValidateVolumeCapabilities(ctx context.Context, req *
 func copyKnownParameters(parameters map[string]string) map[string]string {
 	result := make(map[string]string, len(parameters))
 	for key, value := range parameters {
-		if key == "lvmVolumeGroup" || key == "mode" || key == "wipePolicy" {
-			result[key] = value
+		switch key {
+		default:
+			continue
+		case "lvmVolumeGroup":
+		case "mode":
+		case "wipePolicy":
+		case "csi.storage.k8s.io/pvc/name":
+		case "csi.storage.k8s.io/pvc/namespace":
+		case "csi.storage.k8s.io/pv/name":
 		}
+		result[key] = value
 	}
 	return result
 }
