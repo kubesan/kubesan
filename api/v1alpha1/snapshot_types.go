@@ -19,6 +19,12 @@ type SnapshotSpec struct {
 	// +required
 	VgName string `json:"vgName"`
 
+	// Should be set from creation and never updated, if available.
+	// +kubebuilder:validation:XValidation:rule=oldSelf==self
+	// +kubebuilder:validation:MaxLength=256
+	// +optional
+	Binding string `json:"binding,omitempty"`
+
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	// + This is roughly RFC 1123 label name.
@@ -59,6 +65,7 @@ type SnapshotStatus struct {
 // +kubebuilder:resource:scope=Namespaced,shortName=snap;snaps,categories=kubesan;lv
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Source",type=string,JSONPath=`.spec.sourceVolume`,description='Volume that this snapshot was created on'
+// +kubebuilder:printcolumn:name="Binding",type=string,JSONPath=`.spec.binding`,description='VS object bound to this snapshot',priority=1
 // +kubebuilder:printcolumn:name="Available",type=date,JSONPath=`.status.conditions[?(@.type=="Available")].lastTransitionTime`,description='Time since snapshot was available'
 // +kubebuilder:printcolumn:name="Size",type=integer,JSONPath=`.status.sizeBytes`,description='Size of snapshot'
 // +kubebuilder:selectablefield:JSONPath=`.spec.vgName`

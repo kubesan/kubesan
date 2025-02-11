@@ -68,6 +68,12 @@ type ThinLvSpec struct {
 	// +required
 	Name string `json:"name"`
 
+	// Should be set from creation and never updated, if available.
+	// +kubebuilder:validation:XValidation:rule=oldSelf==self
+	// +kubebuilder:validation:MaxLength=256
+	// +optional
+	Binding string `json:"binding,omitempty"`
+
 	// Should be set from creation and never updated.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self
 	// +required

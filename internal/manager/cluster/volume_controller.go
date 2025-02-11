@@ -112,7 +112,7 @@ func (r *VolumeReconciler) activateDataSource(ctx context.Context, blobMgr blobs
 	// create a temporary snapshot to clone from
 
 	tmpBlobName := cloneVolumeSnapshotName(volume.Name)
-	if err := dataSrcBlobMgr.SnapshotBlob(ctx, tmpBlobName, dataSrcBlobName, volume); err != nil {
+	if err := dataSrcBlobMgr.SnapshotBlob(ctx, tmpBlobName, "", dataSrcBlobName, volume); err != nil {
 		return err
 	}
 
@@ -260,7 +260,7 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 
 	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionLvCreated) || needsResize {
 		skipWipe := volume.Spec.Type.Filesystem != nil || volume.Spec.WipePolicy == v1alpha1.VolumeWipePolicyUnsafeFast
-		if err := blobMgr.CreateBlob(ctx, volume.Name, volume.Spec.SizeBytes, skipWipe, volume); err != nil {
+		if err := blobMgr.CreateBlob(ctx, volume.Name, volume.Spec.Binding, volume.Spec.SizeBytes, skipWipe, volume); err != nil {
 			return err
 		}
 

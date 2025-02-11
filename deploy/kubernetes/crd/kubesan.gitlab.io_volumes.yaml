@@ -34,6 +34,11 @@ spec:
       name: Path
       priority: 1
       type: string
+    - description: '''PVC object bound to this volume'''
+      jsonPath: .spec.binding
+      name: Binding
+      priority: 1
+      type: string
     - description: '''Time since resource was created'''
       jsonPath: .metadata.creationTimestamp
       name: Age
@@ -100,6 +105,12 @@ spec:
                   type: string
                 type: array
                 x-kubernetes-list-type: set
+              binding:
+                description: Should be set from creation and never updated, if available.
+                maxLength: 256
+                type: string
+                x-kubernetes-validations:
+                - rule: oldSelf==self
               contents:
                 description: Should be set from creation and never updated.
                 properties:

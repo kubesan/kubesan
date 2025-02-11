@@ -369,7 +369,7 @@ func (r *ThinPoolLvNodeReconciler) createThinLv(ctx context.Context, thinPoolLv 
 		log.Info("Creating an empty thin LV")
 
 		_, err := commands.LvmLvCreateIdempotent(
-			"",
+			thinLvSpec.Binding,
 			"--devicesfile", thinPoolLv.Spec.VgName,
 			"--type", "thin",
 			"--name", thinLvSpec.Name,
@@ -411,7 +411,7 @@ func (r *ThinPoolLvNodeReconciler) createThinLv(ctx context.Context, thinPoolLv 
 		// create snapshot LVM thin LV
 
 		_, err := commands.LvmLvCreateIdempotent(
-			"",
+			thinLvSpec.Binding,
 			"--devicesfile", thinPoolLv.Spec.VgName,
 			"--name", thinLvSpec.Name,
 			"--snapshot",

@@ -68,10 +68,10 @@ func (m *LinearBlobManager) blkdiscardWorkName(name string) string {
 }
 
 // Create or expand a blob.
-func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, sizeBytes int64, skipWipe bool, owner client.Object) error {
+func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, binding string, sizeBytes int64, skipWipe bool, owner client.Object) error {
 	// This creates but does not resize.
 	_, err := commands.LvmLvCreateIdempotent(
-		"",
+		binding,
 		"--devicesfile", m.vgName,
 		"--activate", "n",
 		"--type", "linear",
@@ -141,7 +141,7 @@ func (m *LinearBlobManager) RemoveBlob(ctx context.Context, name string, owner c
 	return err
 }
 
-func (m *LinearBlobManager) SnapshotBlob(ctx context.Context, name string, sourceName string, owner client.Object) error {
+func (m *LinearBlobManager) SnapshotBlob(ctx context.Context, name string, binding string, sourceName string, owner client.Object) error {
 	// Linear volumes do not support snapshots
 	return errors.NewBadRequest("linear volumes do not support snapshots")
 }
