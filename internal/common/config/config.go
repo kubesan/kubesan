@@ -17,7 +17,7 @@ import (
 const (
 	// + Don't forget to update deploy/kubernetes/kustomization.yaml
 	// + when bumping this version string for a release.
-	Version = "v0.10.0"
+	Version = "v0.10.1"
 
 	CsiSocketPath = "/run/csi/socket"
 
