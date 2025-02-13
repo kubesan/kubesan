@@ -368,22 +368,28 @@ func (r *VolumeNodeReconciler) reconcileThinPopulating(ctx context.Context, volu
 func (r *VolumeNodeReconciler) reconcileThin(ctx context.Context, volume *v1alpha1.Volume) error {
 	thinPoolLv := &v1alpha1.ThinPoolLv{}
 
-	err := r.Get(ctx, types.NamespacedName{Name: volume.Name, Namespace: config.Namespace}, thinPoolLv)
-	if err != nil {
-		return client.IgnoreNotFound(err)
+	if err := r.Get(ctx, types.NamespacedName{Name: volume.Name, Namespace: config.Namespace}, thinPoolLv); err != nil {
+		if volume.DeletionTimestamp != nil {
+			return client.IgnoreNotFound(err)
+		}
+		return err
 	}
 
 	thinLvName := thinpoollv.VolumeToThinLvName(volume.Name)
 	thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvName)
 	if thinLvStatus == nil {
+		if volume.DeletionTimestamp != nil && !slices.Contains(volume.Status.AttachedToNodes, config.LocalNodeName) {
+			return nil
+		}
 		return errors.NewBadRequest("unexpected missing blob")
 	}
-	if err = r.reconcileThinNBDCleanup(ctx, volume, thinLvStatus.SizeBytes); err != nil {
+	if err := r.reconcileThinNBDCleanup(ctx, volume, thinLvStatus.SizeBytes); err != nil {
 		return err
 	}
 
 	var attached bool
-	if slices.Contains(volume.Spec.AttachToNodes, config.LocalNodeName) {
+	var err error
+	if volume.DeletionTimestamp == nil && slices.Contains(volume.Spec.AttachToNodes, config.LocalNodeName) {
 		err = r.reconcileThinAttaching(ctx, volume, thinPoolLv)
 		attached = true
 	} else {
