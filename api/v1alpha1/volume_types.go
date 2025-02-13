@@ -187,12 +187,10 @@ type VolumeStatus struct {
 	// DataSourceCompleted: Any data source has been copied into the LVM,
 	// so that it is now ready to be attached to nodes
 	// Abnormal: Indicates the health of a volume
-	// +patchMergeKey=type
-	// +patchStrategy=merge
 	// +optional
 	// +listType=map
 	// +listMapKey=type
-	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// Reflects the current size of the volume.
 	// +kubebuilder:validation:XValidation:rule=oldSelf<=self
