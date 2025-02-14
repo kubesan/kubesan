@@ -3,9 +3,19 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: kubesan
+  name: kubesan-linear
 provisioner: kubesan.gitlab.io
 parameters:
   lvmVolumeGroup: kubesan-vg
-  mode: @@MODE@@
+  mode: Linear
+allowVolumeExpansion: true
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: kubesan-thin
+provisioner: kubesan.gitlab.io
+parameters:
+  lvmVolumeGroup: kubesan-vg
+  mode: Thin
 allowVolumeExpansion: true

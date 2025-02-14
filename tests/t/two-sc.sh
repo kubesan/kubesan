@@ -18,7 +18,7 @@ metadata:
 provisioner: kubesan.gitlab.io
 parameters:
   lvmVolumeGroup: second-vg
-  mode: $mode
+  mode: ${mode^}
 EOF
 
 ksan-stage 'Provisioning volumes in each StorageClass...'
@@ -44,10 +44,10 @@ make_pvc()
 EOF
 }
 
-make_pvc kubesan
+make_pvc kubesan-$mode
 make_pvc second
 
-ksan-wait-for-pvc-to-be-bound 60 "test-pvc-kubesan"
+ksan-wait-for-pvc-to-be-bound 60 "test-pvc-kubesan-$mode"
 ksan-wait-for-pvc-to-be-bound 60 "test-pvc-second"
 
 ksan-stage 'Mounting both volumes read-write...'
@@ -77,7 +77,7 @@ spec:
   volumes:
     - name: pvc1
       persistentVolumeClaim:
-        claimName: test-pvc-kubesan
+        claimName: test-pvc-kubesan-$mode
     - name: pvc2
       persistentVolumeClaim:
         claimName: test-pvc-second
@@ -90,4 +90,4 @@ ksan-stage 'Unmounting volumes...'
 
 kubectl delete pod "test-pod" --timeout=30s
 
-ksan-delete-volume "test-pvc-kubesan" "test-pvc-second"
+ksan-delete-volume "test-pvc-kubesan-$mode" "test-pvc-second"

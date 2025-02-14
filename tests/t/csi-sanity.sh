@@ -6,7 +6,7 @@ ksan-supported-modes Linear Thin
 # We can still run tests that test argument validation, but must skip all
 # tests that require successful snapshots or clones.
 skips=''
-if [[ $mode == Linear ]]; then
+if [[ $mode == linear ]]; then
     skips='
         - "--ginkgo.skip=CreateSnapshot.*should succeed"
         - "--ginkgo.skip=CreateSnapshot.*existing name"
@@ -25,7 +25,7 @@ kind: ConfigMap
 metadata:
   name: csi-parameters
 data:
-  parameters: '$(kubectl get --output jsonpath={.parameters} sc kubesan)'
+  parameters: '$(kubectl get --output jsonpath={.parameters} sc kubesan-$mode)'
 ---
 apiVersion: v1
 kind: Pod
