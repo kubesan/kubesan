@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
-ksan-supported-modes Thin
+ksan-supported-modes Linear Thin
 
 ksan-stage 'Creating thin volume...'
 mode=thin ksan-create-rwo-volume test-pvc-1 64Mi

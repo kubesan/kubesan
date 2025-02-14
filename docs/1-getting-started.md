@@ -290,7 +290,7 @@ support in a future release:
 
 | Description         | RWO  | RWX  | ROX     | Online Expand  | Offline Expand | Snapshots/Clonable | Creation by Contents    |
 | :------------------ | :--- | :--- | :------ | :------ | :------ | :--------- | :---------- |
-| LinearLV Block      | Yes  | Yes  | Planned | No      | Yes     | No         | Planned     |
+| LinearLV Block      | Yes  | Yes  | Planned | No      | Yes     | No         | Yes         |
 | LinearLV Filesystem | Yes  | No   | Planned | No      | Planned | No         | Planned     |
 | ThinLV Block        | Yes  | Yes  | Planned | Yes     | Yes     | Yes        | Yes         |
 | ThinLV Filesystem   | Yes  | No   | Planned | Planned | Planned | Planned    | Planned     |

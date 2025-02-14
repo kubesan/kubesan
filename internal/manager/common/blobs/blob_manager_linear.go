@@ -78,7 +78,6 @@ func (m *LinearBlobManager) ActivateBlobForCloneSource(ctx context.Context, name
 }
 
 func (m *LinearBlobManager) ActivateBlobForCloneTarget(ctx context.Context, name string, dataSrcBlobMgr BlobManager) (string, error) {
-	// TODO Linear volumes could also support being a clone destination from a thin snapshot
 	return config.LocalNodeName, nil
 }
 

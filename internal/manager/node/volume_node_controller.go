@@ -313,21 +313,15 @@ func (w *ddWork) Run(ctx context.Context) error {
 		return err
 	}
 
+	// To test long-running operations: _, err := commands.RunOnHostContext(ctx, "sleep", "30")
 	log.Info("Finished populating new volume", "sourcePathOnHost", w.sourcePathOnHost, "targetPathOnHost", w.targetPathOnHost)
 	return nil
 }
 
-func getSourcePathOnHost(volume *v1alpha1.Volume) string {
-	// Cross-VG cloning is not supported, so it's safe to use the target Volume's VG
-	vgName := volume.Spec.VgName
-	return "/dev/" + vgName + "/" + thinpoollv.VolumeToThinLvName("clone-"+volume.Name)
-}
-
-// Populate a Thin volume from a snapshot source.
-func (r *VolumeNodeReconciler) reconcileThinPopulating(ctx context.Context, volume *v1alpha1.Volume) error {
+// Populate an activated destination volume from a snapshot source, and return its size.
+func (r *VolumeNodeReconciler) reconcileSourcePopulating(ctx context.Context, volume *v1alpha1.Volume, targetPathOnHost string) (int64, error) {
 	if volume.Spec.Contents.ContentsType == v1alpha1.VolumeContentsTypeEmpty {
-		// Empty volumes were done as no-op in cluster reconcile.
-		return errors.NewBadRequest("unexpected thin source")
+		return 0, errors.NewBadRequest("unexpected empty source")
 	}
 
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
@@ -336,28 +330,42 @@ func (r *VolumeNodeReconciler) reconcileThinPopulating(ctx context.Context, volu
 
 	if volume.DeletionTimestamp != nil {
 		log.Info("Canceling dd work due to volume deletion", "volumeName", volume.Name)
-		return r.workers.Cancel(workName) // stop dd
+		return 0, r.workers.Cancel(workName) // stop dd
 	}
 
-	sourcePathOnHost := getSourcePathOnHost(volume)
-	targetPathOnHost := devName(volume)
+	// Cross-VG cloning is not supported, so it's safe to use the target Volume's VG
+	vgName := volume.Spec.VgName
+	sourceLv := thinpoollv.VolumeToThinLvName("clone-" + volume.Name)
+	sourcePathOnHost := "/dev/" + vgName + "/" + sourceLv
 
 	// We should only reach here on node where data source is already activated
 
 	if exists, _ := commands.PathExistsOnHost(sourcePathOnHost); !exists {
 		log.Info("Source path does not exist on host", "path", sourcePathOnHost)
-		return errors.NewBadRequest("unexpected missing source mount")
+		return 0, errors.NewBadRequest("unexpected missing source mount")
 	}
 	if exists, _ := commands.PathExistsOnHost(targetPathOnHost); !exists {
 		log.Info("Target path does not exist on host", "path", targetPathOnHost)
-		return errors.NewBadRequest("unexpected missing destination mount")
+		return 0, errors.NewBadRequest("unexpected missing destination mount")
 	}
 
 	work := &ddWork{
 		sourcePathOnHost: sourcePathOnHost,
 		targetPathOnHost: targetPathOnHost,
 	}
-	return r.workers.Run(workName, volume, work)
+
+	err := r.workers.Run(workName, volume, work)
+	if err != nil {
+		return 0, err
+	}
+	return commands.LvmSize(vgName, sourceLv)
+}
+
+// Populate a Thin volume from a snapshot source.
+func (r *VolumeNodeReconciler) reconcileThinPopulating(ctx context.Context, volume *v1alpha1.Volume) error {
+	// Empty volumes were done as no-op in cluster reconcile.
+	_, err := r.reconcileSourcePopulating(ctx, volume, devName(volume))
+	return err
 }
 
 type blkdiscardWork struct {
@@ -381,16 +389,11 @@ func blkdiscardWorkName(volume *v1alpha1.Volume) string {
 	return "blkdiscard/" + volume.Spec.VgName + "/" + volume.Name
 }
 
-// Populate a Linear volume from an empty source (that is, zero the image).
+// Populate a Linear volume from any source.
 func (r *VolumeNodeReconciler) reconcileLinearPopulating(ctx context.Context, volume *v1alpha1.Volume) error {
-	if volume.Spec.Contents.ContentsType != v1alpha1.VolumeContentsTypeEmpty {
-		// TODO allow linear to be populated from source
-		return errors.NewBadRequest("unexpected linear source")
-	}
-
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
-	// Activate so that the node reconciler can run blkdiscard.
+	// Activate so that the node reconciler can run dd and/or blkdiscard.
 	_, err := commands.Lvm("lvchange",
 		"--devicesfile", volume.Spec.VgName,
 		"--activate", "ey",
@@ -404,6 +407,21 @@ func (r *VolumeNodeReconciler) reconcileLinearPopulating(ctx context.Context, vo
 	offset, err := commands.LvmLvGetCounter(volume.Spec.VgName, volume.Name, LvmLvKeySafeOffset)
 	if err != nil {
 		return err
+	}
+	log.Info("populating linear volume", "offset", offset)
+
+	// Populate the data, but only if it has not yet been populated.
+	if volume.Spec.Contents.ContentsType != v1alpha1.VolumeContentsTypeEmpty && offset == 0 {
+		log.Info("populating linear volume from source")
+		offset, err = r.reconcileSourcePopulating(ctx, volume, targetPathOnHost)
+		if err != nil {
+			return err
+		}
+
+		_, err = commands.LvmLvUpdateCounterIfLower(volume.Spec.VgName, volume.Name, LvmLvKeySafeOffset, offset)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Linear volumes contain the previous contents of the disk, which can
@@ -428,6 +446,7 @@ func (r *VolumeNodeReconciler) reconcileLinearPopulating(ctx context.Context, vo
 		}
 
 		if offset < sizeBytes && volume.Spec.WipePolicy != v1alpha1.VolumeWipePolicyUnsafeFast {
+			log.Info("populating linear volume with zeroes")
 			work := &blkdiscardWork{
 				device: targetPathOnHost,
 				offset: offset,
@@ -443,6 +462,7 @@ func (r *VolumeNodeReconciler) reconcileLinearPopulating(ctx context.Context, vo
 		}
 	}
 
+	log.Info("done populating linear volume")
 	_, err = commands.Lvm("lvchange",
 		"--devicesfile", volume.Spec.VgName,
 		"--activate", "n",

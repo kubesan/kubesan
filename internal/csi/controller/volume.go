@@ -81,9 +81,6 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 	if err != nil {
 		return nil, err
 	}
-	if volumeContents.ContentsType != v1alpha1.VolumeContentsTypeEmpty && volumeMode != v1alpha1.VolumeModeThin {
-		return nil, status.Error(codes.Unimplemented, "cannot clone into a linear volume")
-	}
 
 	// We don't advertise MODIFY_VOLUME, so mutable parameters are unexpected.
 	if len(req.MutableParameters) > 0 {
