@@ -5,11 +5,9 @@ package blobs
 import (
 	"context"
 	"fmt"
-	"strconv"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"gitlab.com/kubesan/kubesan/internal/common/commands"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
@@ -34,46 +32,18 @@ func NewLinearBlobManager(workers *workers.Workers, vgName string) BlobManager {
 	}
 }
 
-type blkdiscardWork struct {
-	vgName   string
-	lvName   string
-	offset   int64
-	skipWipe bool
-}
-
-func (w *blkdiscardWork) Run(ctx context.Context) error {
-	log := log.FromContext(ctx)
-	if w.skipWipe && w.offset > 0 {
-		return nil
-	}
-	return commands.WithLvmLvActivated(w.vgName, w.lvName, true, func() error {
-		path := fmt.Sprintf("/dev/%s/%s", w.vgName, w.lvName)
-		args := []string{"blkdiscard", "--zeroout", "--offset",
-			strconv.FormatInt(w.offset, 10)}
-		if w.skipWipe {
-			args = append(args, "--length", strconv.Itoa(4*1024*1024))
-		}
-		args = append(args, path)
-		log.Info("blkdiscard worker zeroing LV", "path", path, "command", args)
-		_, err := commands.RunOnHostContext(ctx, args...)
-		// To test long-running operations: _, err := commands.RunOnHostContext(ctx, "sleep", "30")
-		log.Info("blkdiscard worker finished", "path", path)
-		return err
-	})
-}
-
-// Returns a unique name for a blkdiscard work item
-func (m *LinearBlobManager) blkdiscardWorkName(name string) string {
-	return fmt.Sprintf("blkdiscard/%s/%s", m.vgName, name)
-}
-
 // Create or expand a blob.
 func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, binding string, sizeBytes int64, skipWipe bool, owner client.Object) error {
-	// This creates but does not resize.
+	// This creates but does not resize; we use lvm to zero the
+	// first 4k, but we can leave the device activated because it
+	// will be deactivated when the node reconciler finishes
+	// wiping the rest of the volume.
 	_, err := commands.LvmLvCreateIdempotent(
 		binding,
 		"--devicesfile", m.vgName,
-		"--activate", "n",
+		"--activate", "ey",
+		"--zero", "y",
+		"--wipesignatures", "n", // wipe without asking
 		"--type", "linear",
 		"--metadataprofile", "kubesan",
 		"--name", name,
@@ -84,56 +54,15 @@ func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, binding
 		return err
 	}
 
-	// Linear volumes contain the previous contents of the disk, which can
-	// be an information leak if multiple users have access to the same
-	// Volume Group. Zero the LV to avoid security issues.
-	//
-	// We track how much of the image has been zeroed and then
-	// exposed to the user with a counter tag, in order to support
-	// image expansion.  We must never touch an offset prior to
-	// the stored value, and must never expose the image to the
-	// user while the stored value is less than the lv size.
-	LvmLvKeySafeOffset := config.Domain + "/safe-offset"
-	offset, err := commands.LvmLvGetCounter(m.vgName, name, LvmLvKeySafeOffset)
-	if err != nil {
-		return err
-	}
-
-	if offset < sizeBytes {
-		if _, err := commands.LvmLvExtendIdempotent(
-			"--devicesfile", m.vgName,
-			"--size", fmt.Sprintf("%db", sizeBytes),
-			m.vgName+"/"+name,
-		); err != nil {
-			return err
-		}
-
-		work := &blkdiscardWork{
-			vgName:   m.vgName,
-			lvName:   name,
-			offset:   offset,
-			skipWipe: skipWipe,
-		}
-		err := m.workers.Run(m.blkdiscardWorkName(name), owner, work)
-		if err != nil {
-			return err
-		}
-
-		_, err = commands.LvmLvUpdateCounterIfLower(m.vgName, name, LvmLvKeySafeOffset, sizeBytes)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	_, err = commands.LvmLvExtendIdempotent(
+		"--devicesfile", m.vgName,
+		"--size", fmt.Sprintf("%db", sizeBytes),
+		m.vgName+"/"+name,
+	)
+	return err
 }
 
 func (m *LinearBlobManager) RemoveBlob(ctx context.Context, name string, owner client.Object) error {
-	// stop blkdiscard in case it's running
-	if err := m.workers.Cancel(m.blkdiscardWorkName(name)); err != nil {
-		return err
-	}
-
 	_, err := commands.LvmLvRemoveIdempotent(
 		"--devicesfile", m.vgName,
 		fmt.Sprintf("%s/%s", m.vgName, name),

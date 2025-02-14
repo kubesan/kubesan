@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -359,6 +360,27 @@ func (r *VolumeNodeReconciler) reconcileThinPopulating(ctx context.Context, volu
 	return r.workers.Run(workName, volume, work)
 }
 
+type blkdiscardWork struct {
+	device string
+	offset int64
+}
+
+func (w *blkdiscardWork) Run(ctx context.Context) error {
+	log := log.FromContext(ctx)
+	args := []string{"blkdiscard", "--zeroout", "--offset",
+		strconv.FormatInt(w.offset, 10), w.device}
+	log.Info("blkdiscard worker zeroing LV", "path", w.device, "command", args)
+	_, err := commands.RunOnHostContext(ctx, args...)
+	// To test long-running operations: _, err := commands.RunOnHostContext(ctx, "sleep", "30")
+	log.Info("blkdiscard worker finished", "path", w.device)
+	return err
+}
+
+// Returns a unique name for a blkdiscard work item
+func blkdiscardWorkName(volume *v1alpha1.Volume) string {
+	return "blkdiscard/" + volume.Spec.VgName + "/" + volume.Name
+}
+
 // Populate a Linear volume from an empty source (that is, zero the image).
 func (r *VolumeNodeReconciler) reconcileLinearPopulating(ctx context.Context, volume *v1alpha1.Volume) error {
 	if volume.Spec.Contents.ContentsType != v1alpha1.VolumeContentsTypeEmpty {
@@ -378,9 +400,48 @@ func (r *VolumeNodeReconciler) reconcileLinearPopulating(ctx context.Context, vo
 	}
 
 	targetPathOnHost := "/dev/" + volume.Spec.VgName + "/" + volume.Name
+	LvmLvKeySafeOffset := config.Domain + "/safe-offset"
+	offset, err := commands.LvmLvGetCounter(volume.Spec.VgName, volume.Name, LvmLvKeySafeOffset)
+	if err != nil {
+		return err
+	}
 
-	// TODO Perform blkdiscard here, rather than in blob_manager_linear.
-	log.Info("perform block zero here instead of in cluster manager", "device", targetPathOnHost)
+	// Linear volumes contain the previous contents of the disk, which can
+	// be an information leak if multiple users have access to the same
+	// Volume Group. Zero the LV to avoid security issues.  Filesystems,
+	// or an explicit UnsafeFast wipe policy, can skip this wipe.
+	//
+	// We track how much of the image has been zeroed and then
+	// exposed to the user with a counter tag, in order to support
+	// image expansion.  We must never touch an offset prior to
+	// the stored value, and must never expose the image to the
+	// user while the stored value is less than the lv size.
+	if volume.DeletionTimestamp != nil {
+		log.Info("Canceling blkdiscard work due to volume deletion", "volumeName", volume.Name)
+		if err := r.workers.Cancel(blkdiscardWorkName(volume)); err != nil {
+			return err
+		}
+	} else if volume.Spec.Type.Block != nil {
+		sizeBytes, err := commands.LvmSize(volume.Spec.VgName, volume.Name)
+		if err != nil {
+			return err
+		}
+
+		if offset < sizeBytes && volume.Spec.WipePolicy != v1alpha1.VolumeWipePolicyUnsafeFast {
+			work := &blkdiscardWork{
+				device: targetPathOnHost,
+				offset: offset,
+			}
+			if err := r.workers.Run(blkdiscardWorkName(volume), volume, work); err != nil {
+				return err
+			}
+		}
+
+		_, err = commands.LvmLvUpdateCounterIfLower(volume.Spec.VgName, volume.Name, LvmLvKeySafeOffset, sizeBytes)
+		if err != nil {
+			return err
+		}
+	}
 
 	_, err = commands.Lvm("lvchange",
 		"--devicesfile", volume.Spec.VgName,
