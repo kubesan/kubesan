@@ -28,6 +28,7 @@ git commit -s -m "Release ${VERSION}" -e
 printf "${GREEN}Running tests${RESET}\n"
 tests/run.sh create-cache
 tests/run.sh --use-cache all
+tests/run.sh --use-cache all --mode Linear
 
 # Publish container image
 printf "${GREEN}Publish container image${RESET}\n"
