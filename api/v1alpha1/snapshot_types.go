@@ -48,12 +48,10 @@ type SnapshotStatus struct {
 
 	// Conditions
 	// Available: The snapshot can be sourced by volumes.
-	// +patchMergeKey=type
-	// +patchStrategy=merge
 	// +optional
 	// +listType=map
 	// +listMapKey=type
-	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// The size of the snapshot, immutable once set.
 	// +kubebuilder:validation:XValidation:rule=oldSelf==self

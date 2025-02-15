@@ -223,6 +223,10 @@ func (r *VolumeNodeReconciler) reconcileThinNBDSetup(ctx context.Context, volume
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: config.Namespace,
+			Labels: map[string]string{
+				config.AppNameLabel:    "kubesan",
+				config.AppVersionLabel: config.Version,
+			},
 		},
 		Spec: v1alpha1.NBDExportSpec{
 			Host:      config.LocalNodeName,
@@ -364,22 +368,28 @@ func (r *VolumeNodeReconciler) reconcileThinPopulating(ctx context.Context, volu
 func (r *VolumeNodeReconciler) reconcileThin(ctx context.Context, volume *v1alpha1.Volume) error {
 	thinPoolLv := &v1alpha1.ThinPoolLv{}
 
-	err := r.Get(ctx, types.NamespacedName{Name: volume.Name, Namespace: config.Namespace}, thinPoolLv)
-	if err != nil {
-		return client.IgnoreNotFound(err)
+	if err := r.Get(ctx, types.NamespacedName{Name: volume.Name, Namespace: config.Namespace}, thinPoolLv); err != nil {
+		if volume.DeletionTimestamp != nil {
+			return client.IgnoreNotFound(err)
+		}
+		return err
 	}
 
 	thinLvName := thinpoollv.VolumeToThinLvName(volume.Name)
 	thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvName)
 	if thinLvStatus == nil {
+		if volume.DeletionTimestamp != nil && !slices.Contains(volume.Status.AttachedToNodes, config.LocalNodeName) {
+			return nil
+		}
 		return errors.NewBadRequest("unexpected missing blob")
 	}
-	if err = r.reconcileThinNBDCleanup(ctx, volume, thinLvStatus.SizeBytes); err != nil {
+	if err := r.reconcileThinNBDCleanup(ctx, volume, thinLvStatus.SizeBytes); err != nil {
 		return err
 	}
 
 	var attached bool
-	if slices.Contains(volume.Spec.AttachToNodes, config.LocalNodeName) {
+	var err error
+	if volume.DeletionTimestamp == nil && slices.Contains(volume.Spec.AttachToNodes, config.LocalNodeName) {
 		err = r.reconcileThinAttaching(ctx, volume, thinPoolLv)
 		attached = true
 	} else {
@@ -481,11 +491,11 @@ func (r *VolumeNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			err = errors.NewBadRequest("invalid volume mode for data population")
 		}
 
-		if _, ok := err.(*util.WatchPending); ok {
-			log.Info("reconcile waiting for Watch during data population")
+		if watch, ok := err.(*util.WatchPending); ok {
+			log.Info("reconcile waiting for Watch during data population", "why", watch.Why)
 			return ctrl.Result{}, nil // wait until Watch triggers
 		}
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, err
 	}
 
 	// check if ready for operation

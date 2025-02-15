@@ -2,6 +2,22 @@
 
 ksan-supported-modes Linear Thin
 
+# Linear does not support snapshots, even though the driver advertises it.
+# We can still run tests that test argument validation, but must skip all
+# tests that require successful snapshots or clones.
+skips=''
+if [[ $mode == Linear ]]; then
+    skips='
+        - "--ginkgo.skip=CreateSnapshot.*should succeed"
+        - "--ginkgo.skip=CreateSnapshot.*existing name"
+        - "--ginkgo.skip=CreateVolume.*existing source"
+        - "--ginkgo.skip=DeleteSnapshot.*should return"
+        - "--ginkgo.skip=ListSnapshots.*new snapshots"
+        - "--ginkgo.skip=ListSnapshots.*next token"
+        - "--ginkgo.skip=ListSnapshots.*return snapshots"
+'
+fi
+
 kubectl create -f - <<EOF
 ---
 apiVersion: v1
@@ -46,6 +62,7 @@ spec:
         - --ginkgo.v
         - --ginkgo.seed=1
         - --ginkgo.fail-fast
+${skips}
       volumeMounts:
         - name: drivers
           mountPath: /var/lib/kubelet/plugins

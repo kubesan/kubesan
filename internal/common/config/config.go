@@ -17,7 +17,9 @@ import (
 const (
 	// + Don't forget to update deploy/kubernetes/kustomization.yaml
 	// + when bumping this version string for a release.
-	Version = "v0.10.1"
+	Version         = "v0.10.1"
+	AppNameLabel    = "app.kubernetes.io/name"
+	AppVersionLabel = "app.kubernetes.io/version"
 
 	CsiSocketPath = "/run/csi/socket"
 

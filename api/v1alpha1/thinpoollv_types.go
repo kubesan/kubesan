@@ -27,13 +27,11 @@ type ThinPoolLvSpec struct {
 	SizeBytes int64 `json:"sizeBytes"`
 
 	// May be updated at will.
-	// +patchMergeKey=type
-	// +patchStrategy=merge
 	// +optional
 	// +listType=map
 	// +listMapKey=name
 	// +kubebuilder:validation:MaxItems=65536
-	ThinLvs []ThinLvSpec `json:"thinLvs,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	ThinLvs []ThinLvSpec `json:"thinLvs,omitempty"`
 
 	// Name of node where activation is needed, or empty.
 	// When changing, may only toggle between "" and non-empty.
@@ -158,12 +156,10 @@ type ThinPoolLvStatus struct {
 	// Conditions
 	// Available: The LVM volume has been created
 	// Active: The last time Status.ActiveOnNode changed
-	// +patchMergeKey=type
-	// +patchStrategy=merge
 	// +optional
 	// +listType=map
 	// +listMapKey=type
-	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// The name of the node where the LVM thin pool LV is active, along with any active LVM thin LVs; or "".
 	// + This rule must permit RFC 1123 DNS subdomain names.
@@ -173,13 +169,11 @@ type ThinPoolLvStatus struct {
 	ActiveOnNode string `json:"activeOnNode,omitempty"`
 
 	// The status of each LVM thin LV that currently exists in the LVM thin pool LV.
-	// +patchMergeKey=type
-	// +patchStrategy=merge
 	// +optional
 	// +listType=map
 	// +listMapKey=name
 	// +kubebuilder:validation:MaxItems=65536
-	ThinLvs []ThinLvStatus `json:"thinLvs,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	ThinLvs []ThinLvStatus `json:"thinLvs,omitempty"`
 }
 
 func (s *ThinPoolLvStatus) FindThinLv(name string) *ThinLvStatus {

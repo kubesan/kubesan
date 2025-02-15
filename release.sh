@@ -15,7 +15,7 @@ fi
 
 # Update files with version number
 printf "${GREEN}Updating version number in files${RESET}\n"
-sed -i "/Version = \"${PREV_VERSION}\"/ s/Version = \"${PREV_VERSION}\"/Version = \"${VERSION}\"/" internal/common/config/config.go
+sed -i "/Version *= \"${PREV_VERSION}\"/ s/${PREV_VERSION}/${VERSION}/" internal/common/config/config.go
 sed -i "/version: / s/latest/${VERSION}/" deploy/kubernetes/kustomization.yaml
 sed -i "/newTag: / s/latest/${VERSION}/" deploy/kubernetes/kustomization.yaml
 sed -i "s|kubesan/kubesan/deploy/openshift?ref=${PREV_VERSION}|kubesan/kubesan/deploy/openshift?ref=${VERSION}|g" docs/1-getting-started.md
@@ -28,6 +28,7 @@ git commit -s -m "Release ${VERSION}" -e
 printf "${GREEN}Running tests${RESET}\n"
 tests/run.sh create-cache
 tests/run.sh --use-cache all
+tests/run.sh --use-cache all --mode Linear
 
 # Publish container image
 printf "${GREEN}Publish container image${RESET}\n"

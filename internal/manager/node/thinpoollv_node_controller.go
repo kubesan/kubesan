@@ -416,6 +416,7 @@ func (r *ThinPoolLvNodeReconciler) createThinLv(ctx context.Context, thinPoolLv 
 			"--name", thinLvSpec.Name,
 			"--snapshot",
 			"--setactivationskip", "n",
+			"--permission", "r",
 			fmt.Sprintf("%s/%s", thinPoolLv.Spec.VgName, sourceLv),
 		)
 		if err != nil {

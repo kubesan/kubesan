@@ -31,6 +31,7 @@ configMapGenerator:
       - group-start=devel.kubesan
       - group=devel.kubesan.gitlab.io
       - socket-path-start=/var/lib/kubelet/plugins/devel-kubesan
+      - shortname-start=d
 
 replacements:
   - source:
@@ -124,6 +125,18 @@ replacements:
         fieldPaths:
           - driver
           - metadata.name
+  - source:
+      kind: ConfigMap
+      name: devel-configmap
+      fieldPath: data.shortname-start
+    targets:
+      - select:
+          kind: CustomResourceDefinition
+        options:
+          delimiter: '-'
+          index: -1
+        fieldPaths:
+          - spec.names.shortNames.*
 
 transformers:
   - cluster_resource_prefix.yaml

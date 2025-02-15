@@ -183,7 +183,7 @@ func ActivateThinLv(ctx context.Context, client client.Client, oldThinPoolLv, th
 
 	thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvName)
 	if thinLvStatus == nil || thinLvStatus.State.Name != v1alpha1.ThinLvStatusStateNameActive {
-		return &util.WatchPending{}
+		return util.NewWatchPending("waiting for ThinLv activation")
 	}
 	return nil
 }
@@ -212,7 +212,7 @@ func DeactivateThinLv(ctx context.Context, client client.Client, oldThinPoolLv, 
 
 	thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvName)
 	if thinLvStatus != nil && thinLvStatus.State.Name == v1alpha1.ThinLvStatusStateNameActive {
-		return &util.WatchPending{}
+		return util.NewWatchPending("waiting for ThinLv deactivation")
 	}
 	return nil
 }

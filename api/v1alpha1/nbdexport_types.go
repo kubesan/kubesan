@@ -71,12 +71,10 @@ type NBDExportStatus struct {
 
 	// Conditions
 	// Available: The export is currently accessible
-	// +patchMergeKey=type
-	// +patchStrategy=merge
 	// +optional
 	// +listType=map
 	// +listMapKey=type
-	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 
 	// NBD URI for connecting to the NBD export, using IP address.
 	// write-once when Conditions["Available"] is first set

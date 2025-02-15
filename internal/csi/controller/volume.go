@@ -81,6 +81,9 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 	if err != nil {
 		return nil, err
 	}
+	if volumeContents.ContentsType != v1alpha1.VolumeContentsTypeEmpty && volumeMode != v1alpha1.VolumeModeThin {
+		return nil, status.Error(codes.Unimplemented, "cannot clone into a linear volume")
+	}
 
 	// We don't advertise MODIFY_VOLUME, so mutable parameters are unexpected.
 	if len(req.MutableParameters) > 0 {
@@ -109,6 +112,10 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: config.Namespace,
+			Labels: map[string]string{
+				config.AppNameLabel:    "kubesan",
+				config.AppVersionLabel: config.Version,
+			},
 		},
 		Spec: v1alpha1.VolumeSpec{
 			VgName:      lvmVolumeGroup,
@@ -263,7 +270,7 @@ func (s *ControllerServer) getVolumeContents(ctx context.Context, req *csi.Creat
 
 		case volume.Spec.Mode == v1alpha1.VolumeModeLinear:
 			// Cloning a linear volume is not possible.
-			return nil, status.Error(codes.InvalidArgument, "cannot clone a linear volume")
+			return nil, status.Error(codes.InvalidArgument, "cannot clone from a linear volume")
 
 		case !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable):
 			return nil, status.Error(codes.NotFound, "source volume is not ready yet")
