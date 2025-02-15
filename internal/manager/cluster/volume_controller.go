@@ -66,34 +66,34 @@ func cloneVolumeSnapshotName(volumeName string) string {
 	return "clone-" + volumeName
 }
 
-// Get a BlobManager and blob name for a given volume's data source
-func (r *VolumeReconciler) getDataSourceBlob(ctx context.Context, volume *v1alpha1.Volume) (blobs.BlobManager, string, error) {
+// Get a BlobManager, blob name, and pool for a given volume's data source.
+func (r *VolumeReconciler) getDataSourceBlob(ctx context.Context, volume *v1alpha1.Volume) (blobs.BlobManager, string, string, error) {
 	switch volume.Spec.Contents.ContentsType {
 	case v1alpha1.VolumeContentsTypeCloneVolume:
 		name := volume.Spec.Contents.CloneVolume.SourceVolume
 
 		dataSrcVolume := &v1alpha1.Volume{}
 		if err := r.Client.Get(ctx, types.NamespacedName{Name: name, Namespace: config.Namespace}, dataSrcVolume); err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
 
 		blobMgr, err := r.newBlobManager(dataSrcVolume)
 		if err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
-		return blobMgr, name, nil
+		return blobMgr, name, name, nil
 	case v1alpha1.VolumeContentsTypeCloneSnapshot:
 		name := volume.Spec.Contents.CloneSnapshot.SourceSnapshot
 
 		dataSrcSnapshot := &v1alpha1.Snapshot{}
 		if err := r.Client.Get(ctx, types.NamespacedName{Name: name, Namespace: config.Namespace}, dataSrcSnapshot); err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
 
 		blobMgr := blobs.NewThinBlobManager(r.Client, r.Scheme, dataSrcSnapshot.Spec.VgName, dataSrcSnapshot.Spec.SourceVolume)
-		return blobMgr, name, nil
+		return blobMgr, name, dataSrcSnapshot.Spec.SourceVolume, nil
 	default:
-		return nil, "", errors.NewBadRequest("cannot get data source for volume without contents")
+		return nil, "", "", errors.NewBadRequest("cannot get data source for volume without contents")
 	}
 }
 
@@ -104,7 +104,7 @@ func (r *VolumeReconciler) activateDataSource(ctx context.Context, blobMgr blobs
 		return nil // do nothing
 	}
 
-	dataSrcBlobMgr, dataSrcBlobName, err := r.getDataSourceBlob(ctx, volume)
+	dataSrcBlobMgr, dataSrcBlobName, dataSrcPool, err := r.getDataSourceBlob(ctx, volume)
 	if err != nil {
 		return err
 	}
@@ -130,6 +130,22 @@ func (r *VolumeReconciler) activateDataSource(ctx context.Context, blobMgr blobs
 
 	log.Info("Activated target blob for cloning", "volumeName", volume.Name)
 
+	// We need to get back to the same dataSrcBlobMgr, even if the
+	// source Volume or Snapshot is deleted in the meantime. Do so
+	// by storing in a label of the destination Volume.
+	labels := volume.GetLabels()
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+	if _, exists := labels[config.CloneSourceLabel]; !exists {
+		labels[config.CloneSourceLabel] = dataSrcPool
+		volume.SetLabels(labels)
+		if err := r.Update(ctx, volume); err != nil {
+			return err
+		}
+		log.Info("Added label to volume", "volume", volume.Name, "pool", dataSrcPool)
+	}
+
 	return nil
 }
 
@@ -146,9 +162,15 @@ func (r *VolumeReconciler) deactivateDataSource(ctx context.Context, blobMgr blo
 
 	log.Info("Deactivated target blob for cloning", "volumeName", volume.Name)
 
-	tmpBlobName := cloneVolumeSnapshotName(volume.Name)
-	dataSrcBlobMgr, _, err := r.getDataSourceBlob(ctx, volume)
-	if err == nil {
+	labels := volume.GetLabels()
+	if labels == nil {
+		// Assume we already finished cleanup.
+		return nil
+	}
+	if pool, exists := labels[config.CloneSourceLabel]; exists {
+		tmpBlobName := cloneVolumeSnapshotName(volume.Name)
+		dataSrcBlobMgr := blobs.NewThinBlobManager(r.Client, r.Scheme, volume.Spec.VgName, pool)
+
 		log.Info("About to deactivate source blob for cloning", "tmpBlobName", tmpBlobName)
 
 		if err := dataSrcBlobMgr.DeactivateBlobForCloneSource(ctx, tmpBlobName, volume); err != nil {
@@ -162,13 +184,16 @@ func (r *VolumeReconciler) deactivateDataSource(ctx context.Context, blobMgr blo
 		if err := dataSrcBlobMgr.RemoveBlob(ctx, tmpBlobName, volume); err != nil {
 			return err
 		}
-	} else if errors.IsNotFound(err) {
-		// already deleted
-	} else {
-		return err
-	}
+		log.Info("Removed temporary snapshot for cloning", "tmpBlobName", tmpBlobName)
 
-	log.Info("Removed temporary snapshot for cloning", "tmpBlobName", tmpBlobName)
+		// clean up labels
+		delete(labels, config.CloneSourceLabel)
+		volume.SetLabels(labels)
+		if err := r.Update(ctx, volume); err != nil {
+			return err
+		}
+		log.Info("Deleted label from volume", "volume", volume.Name)
+	}
 
 	return nil
 }
