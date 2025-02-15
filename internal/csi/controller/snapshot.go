@@ -40,6 +40,9 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 	}
 
 	switch {
+	case volume.DeletionTimestamp != nil:
+		return nil, status.Error(codes.NotFound, "volume is marked for deletion")
+
 	case volume.Spec.Mode != v1alpha1.VolumeModeThin:
 		return nil, status.Error(codes.Unimplemented, "snapshots are only supported on thin volumes")
 
@@ -96,8 +99,12 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 	if errors.IsAlreadyExists(err) {
 		// Check that the new request is idempotent to the existing snapshot
 		err = s.client.Get(ctx, types.NamespacedName{Name: snapshot.Name, Namespace: config.Namespace}, snapshot)
-		if err == nil && req.SourceVolumeId != snapshot.Spec.SourceVolume {
-			err = status.Error(codes.AlreadyExists, "snapshot already exists with different source")
+		if err == nil {
+			if snapshot.DeletionTimestamp != nil {
+				err = status.Error(codes.AlreadyExists, "snapshot deletion is already in progress")
+			} else if req.SourceVolumeId != snapshot.Spec.SourceVolume {
+				err = status.Error(codes.AlreadyExists, "snapshot already exists with different source")
+			}
 
 		}
 	}

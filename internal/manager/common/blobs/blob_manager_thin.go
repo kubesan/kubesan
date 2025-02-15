@@ -218,7 +218,7 @@ func (m *ThinBlobManager) SnapshotBlob(ctx context.Context, name string, binding
 	oldThinPoolLv := thinPoolLv.DeepCopy()
 
 	sourceThinLv := thinPoolLv.Spec.FindThinLv(thinpoollv.VolumeToThinLvName(sourceName))
-	if sourceThinLv == nil {
+	if sourceThinLv == nil || sourceThinLv.State.Name == v1alpha1.ThinLvSpecStateNameRemoved {
 		log.Error(err, "SnapshotBlob sourceThinLv not found")
 		return errors.NewBadRequest("sourceThinLv not found")
 	}

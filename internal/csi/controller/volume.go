@@ -252,6 +252,9 @@ func (s *ControllerServer) getVolumeContents(ctx context.Context, req *csi.Creat
 		case err != nil:
 			return nil, status.Errorf(codes.InvalidArgument, "unable to inspect source volume: %v", err)
 
+		case volume.DeletionTimestamp != nil:
+			return nil, status.Error(codes.NotFound, "source volume is marked for deletion")
+
 		case volume.Spec.VgName != vgName:
 			// TODO We could possibly relax this for multiple VGs that share a common node in topology
 			return nil, status.Error(codes.InvalidArgument, "source volume does not live in same volume group as destination")
@@ -294,6 +297,9 @@ func (s *ControllerServer) getVolumeContents(ctx context.Context, req *csi.Creat
 
 		case err != nil:
 			return nil, status.Errorf(codes.InvalidArgument, "unable to inspect source snapshot: %v", err)
+
+		case snapshot.DeletionTimestamp != nil:
+			return nil, status.Error(codes.NotFound, "source snapshot is marked for deletion")
 
 		case snapshot.Spec.VgName != vgName:
 			// TODO We could possibly relax this for multiple VGs that share a common node in topology
