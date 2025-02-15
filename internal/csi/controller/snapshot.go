@@ -49,6 +49,9 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 	case volume.Spec.Type.Filesystem != nil:
 		return nil, status.Error(codes.Unimplemented, "filesystem snapshots not implemented yet")
 
+	case !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable):
+		return nil, status.Error(codes.NotFound, "source volume is not ready yet")
+
 	case req.Name == "":
 		return nil, status.Error(codes.InvalidArgument, "must specify snapshot name")
 
