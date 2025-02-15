@@ -63,10 +63,7 @@ func (m *ThinBlobManager) createThinPoolLv(ctx context.Context, name string, siz
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: config.Namespace,
-			Labels: map[string]string{
-				config.AppNameLabel:    "kubesan",
-				config.AppVersionLabel: config.Version,
-			},
+			Labels:    config.CommonLabels,
 		},
 		Spec: v1alpha1.ThinPoolLvSpec{
 			VgName: m.vgName,

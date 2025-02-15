@@ -227,10 +227,7 @@ func (r *VolumeNodeReconciler) reconcileThinNBDSetup(ctx context.Context, volume
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: config.Namespace,
-			Labels: map[string]string{
-				config.AppNameLabel:    "kubesan",
-				config.AppVersionLabel: config.Version,
-			},
+			Labels:    config.CommonLabels,
 		},
 		Spec: v1alpha1.NBDExportSpec{
 			Host:      config.LocalNodeName,
