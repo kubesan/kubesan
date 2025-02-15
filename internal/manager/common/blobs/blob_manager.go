@@ -17,13 +17,9 @@ type BlobManager interface {
 	// If the blob already exists but the size does not match then it will
 	// be expanded to the desired size.
 	//
-	// If skipWipe is true, it is not necessary to wipe the entire blob;
-	// however, the first 4Mi must read as zero on creation, to ensure
-	// any filesystem can be safely installed.
-	//
 	// An owner reference may be added from the given owner to a dependent
 	// resource associated with the new blob.
-	CreateBlob(ctx context.Context, name string, binding string, sizeBytes int64, skipWipe bool, owner client.Object) error
+	CreateBlob(ctx context.Context, name string, binding string, sizeBytes int64, owner client.Object) error
 
 	// RemoveBlob removes a blob if it exists. No error is returned if the
 	// blob does not exist. An owner reference may be removed from the

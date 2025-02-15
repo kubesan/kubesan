@@ -22,28 +22,24 @@ import (
 	kubesanslices "gitlab.com/kubesan/kubesan/internal/common/slices"
 	"gitlab.com/kubesan/kubesan/internal/manager/common/blobs"
 	"gitlab.com/kubesan/kubesan/internal/manager/common/util"
-	"gitlab.com/kubesan/kubesan/internal/manager/common/workers"
 )
 
 type VolumeReconciler struct {
 	client.Client
-	Scheme  *runtime.Scheme
-	workers *workers.Workers
+	Scheme *runtime.Scheme
 }
 
 func SetUpVolumeReconciler(mgr ctrl.Manager) error {
 	r := &VolumeReconciler{
-		Client:  client.NewNamespacedClient(mgr.GetClient(), config.Namespace),
-		Scheme:  mgr.GetScheme(),
-		workers: workers.NewWorkers(),
+		Client: client.NewNamespacedClient(mgr.GetClient(), config.Namespace),
+		Scheme: mgr.GetScheme(),
 	}
 
-	b := ctrl.NewControllerManagedBy(mgr).
+	return ctrl.NewControllerManagedBy(mgr).
 		WithOptions(controller.Options{MaxConcurrentReconciles: config.MaxConcurrentReconciles}).
 		For(&v1alpha1.Volume{}).
-		Owns(&v1alpha1.ThinPoolLv{}, builder.MatchEveryOwner) // for ThinBlobManager
-	r.workers.SetUpReconciler(b)
-	return b.Complete(r)
+		Owns(&v1alpha1.ThinPoolLv{}, builder.MatchEveryOwner). // for ThinBlobManager
+		Complete(r)
 }
 
 // +kubebuilder:rbac:groups=kubesan.gitlab.io,resources=volumes,verbs=get;list;watch;create;update;patch;delete,namespace=kubesan-system
@@ -55,7 +51,7 @@ func (r *VolumeReconciler) newBlobManager(volume *v1alpha1.Volume) (blobs.BlobMa
 	case v1alpha1.VolumeModeThin:
 		return blobs.NewThinBlobManager(r.Client, r.Scheme, volume.Spec.VgName, volume.Name), nil
 	case v1alpha1.VolumeModeLinear:
-		return blobs.NewLinearBlobManager(r.workers, volume.Spec.VgName), nil
+		return blobs.NewLinearBlobManager(volume.Spec.VgName), nil
 	default:
 		return nil, errors.NewBadRequest("invalid volume mode")
 	}
@@ -302,8 +298,7 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 	// create or expand LVM LV if necessary
 
 	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionLvCreated) || needsResize {
-		skipWipe := volume.Spec.Type.Filesystem != nil || volume.Spec.WipePolicy == v1alpha1.VolumeWipePolicyUnsafeFast
-		if err := blobMgr.CreateBlob(ctx, volume.Name, volume.Spec.Binding, volume.Spec.SizeBytes, skipWipe, volume); err != nil {
+		if err := blobMgr.CreateBlob(ctx, volume.Name, volume.Spec.Binding, volume.Spec.SizeBytes, volume); err != nil {
 			return err
 		}
 

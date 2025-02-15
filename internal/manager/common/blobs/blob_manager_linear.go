@@ -11,13 +11,11 @@ import (
 
 	"gitlab.com/kubesan/kubesan/internal/common/commands"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
-	"gitlab.com/kubesan/kubesan/internal/manager/common/workers"
 )
 
 // Per-reconcile invocation state
 type LinearBlobManager struct {
-	workers *workers.Workers
-	vgName  string
+	vgName string
 }
 
 // NewLinearBlobManager returns a BlobManager implemented using LVM's linear
@@ -25,15 +23,14 @@ type LinearBlobManager struct {
 // ReadWriteMany without NBD when used without LVM's COW snapshots. They are a
 // natural fit for use cases that require constant RWX and do not need
 // snapshots.
-func NewLinearBlobManager(workers *workers.Workers, vgName string) BlobManager {
+func NewLinearBlobManager(vgName string) BlobManager {
 	return &LinearBlobManager{
-		workers: workers,
-		vgName:  vgName,
+		vgName: vgName,
 	}
 }
 
 // Create or expand a blob.
-func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, binding string, sizeBytes int64, skipWipe bool, owner client.Object) error {
+func (m *LinearBlobManager) CreateBlob(ctx context.Context, name string, binding string, sizeBytes int64, owner client.Object) error {
 	// This creates but does not resize; we use lvm to zero the
 	// first 4k, but we can leave the device activated because it
 	// will be deactivated when the node reconciler finishes
