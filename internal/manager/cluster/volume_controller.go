@@ -304,12 +304,17 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 
 		log.Info("CreateBlob succeeded")
 
-		if err := r.activateDataSource(ctx, blobMgr, volume); err != nil {
-			return err
+		volume.Status.Path = blobMgr.GetPath(volume.Name)
+		if blobMgr.SizeNeedsCheck(online) {
+			sizeBytes, err := blobMgr.GetSize(ctx, volume.Name)
+			if err != nil {
+				return err
+			}
+			if sizeBytes > volume.Status.SizeBytes {
+				needsUpdate = true
+				volume.Status.SizeBytes = sizeBytes
+			}
 		}
-
-		log.Info("activateDataSource succeeded")
-
 		condition := metav1.Condition{
 			Type:    v1alpha1.VolumeConditionLvCreated,
 			Status:  metav1.ConditionTrue,
@@ -319,6 +324,23 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 		if meta.SetStatusCondition(&volume.Status.Conditions, condition) {
 			needsUpdate = true
 		}
+
+		if needsUpdate {
+			if err := r.statusUpdate(ctx, volume); err != nil {
+				return err
+			}
+		}
+		needsUpdate = false
+	}
+
+	// Ensure initial contents are populated.
+
+	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionDataSourceCompleted) {
+		if err := r.activateDataSource(ctx, blobMgr, volume); err != nil {
+			return err
+		}
+
+		log.Info("activateDataSource succeeded")
 
 		// Shortcut when data population is not required
 		if volume.Spec.Contents.ContentsType == v1alpha1.VolumeContentsTypeEmpty {
@@ -332,8 +354,6 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 				needsUpdate = true
 			}
 		}
-
-		volume.Status.Path = blobMgr.GetPath(volume.Name)
 	}
 
 	if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable) &&
@@ -351,17 +371,6 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 		meta.SetStatusCondition(&volume.Status.Conditions, condition)
 
 		needsUpdate = true
-	}
-
-	if blobMgr.SizeNeedsCheck(online) {
-		sizeBytes, err := blobMgr.GetSize(ctx, volume.Name)
-		if err != nil {
-			return err
-		}
-		if sizeBytes > volume.Status.SizeBytes {
-			needsUpdate = true
-			volume.Status.SizeBytes = sizeBytes
-		}
 	}
 
 	if needsUpdate {
