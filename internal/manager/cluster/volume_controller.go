@@ -231,6 +231,47 @@ func (r *VolumeReconciler) reconcileDeleting(ctx context.Context, blobMgr blobs.
 	return nil
 }
 
+// Prepare a Volume for expansion.
+func (r *VolumeReconciler) reconcilePrepareForResize(ctx context.Context, blobMgr blobs.BlobManager, volume *v1alpha1.Volume, online bool) error {
+	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
+	needsUpdate := false
+
+	if volume.Spec.Type.Filesystem != nil {
+		condition := metav1.Condition{
+			Type:    v1alpha1.VolumeConditionAbnormal,
+			Status:  metav1.ConditionTrue,
+			Reason:  "ResizeUnsupported",
+			Message: "filesystem resize not implemented yet",
+		}
+		if meta.SetStatusCondition(&volume.Status.Conditions, condition) {
+			needsUpdate = true
+		}
+	} else {
+		log.Info("resize needed")
+		if blobMgr.ExpansionMustBeOffline() {
+			if online {
+				return util.NewWatchPending("waiting for volume to be offline")
+			}
+			condition := metav1.Condition{
+				Type:    v1alpha1.VolumeConditionAvailable,
+				Status:  metav1.ConditionFalse,
+				Reason:  "Resizing",
+				Message: "volume is unavailable while resizing",
+			}
+			// This update must happen now, rather than
+			// deferred to the end of reconcile.
+			if meta.SetStatusCondition(&volume.Status.Conditions, condition) {
+				needsUpdate = true
+			}
+		}
+	}
+	if needsUpdate {
+		return r.statusUpdate(ctx, volume)
+	}
+	return nil
+}
+
+// Reconcile cluster-wide aspects of a Volume that has not been deleted.
 func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blobs.BlobManager, volume *v1alpha1.Volume) error {
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 	needsUpdate := false
@@ -248,36 +289,8 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 	// Prepare for a resize, if needed.
 
 	if needsResize {
-		if volume.Spec.Type.Filesystem != nil {
-			condition := metav1.Condition{
-				Type:    v1alpha1.VolumeConditionAbnormal,
-				Status:  metav1.ConditionTrue,
-				Reason:  "ResizeUnsupported",
-				Message: "filesystem resize not implemented yet",
-			}
-			if meta.SetStatusCondition(&volume.Status.Conditions, condition) {
-				needsUpdate = true
-			}
-		} else {
-			log.Info("resize needed")
-			if blobMgr.ExpansionMustBeOffline() {
-				if online {
-					return util.NewWatchPending("waiting for volume to be offline")
-				}
-				condition := metav1.Condition{
-					Type:    v1alpha1.VolumeConditionAvailable,
-					Status:  metav1.ConditionFalse,
-					Reason:  "Resizing",
-					Message: "volume is unavailable while resizing",
-				}
-				// This update must happen now, rather than
-				// deferred to the end of reconcile.
-				if meta.SetStatusCondition(&volume.Status.Conditions, condition) {
-					if err := r.statusUpdate(ctx, volume); err != nil {
-						return err
-					}
-				}
-			}
+		if err := r.reconcilePrepareForResize(ctx, blobMgr, volume, online); err != nil {
+			return err
 		}
 	}
 
