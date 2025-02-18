@@ -288,7 +288,7 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinLvCreation(ctx context.Context, 
 }
 
 func (r *ThinPoolLvNodeReconciler) reconcileThinLvActivations(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv) error {
-	// deactivate thin LVs that are active on this node but shouldn't be
+	// Update thin LV activations to match spec
 
 	for i := range thinPoolLv.Status.ThinLvs {
 		thinLvStatus := &thinPoolLv.Status.ThinLvs[i]
@@ -297,23 +297,25 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinLvActivations(ctx context.Contex
 		shouldBeActive := thinLvSpec != nil && thinLvSpec.State.Name == v1alpha1.ThinLvSpecStateNameActive
 		isActiveInStatus := thinLvStatus.State.Name == v1alpha1.ThinLvStatusStateNameActive
 
-		path := fmt.Sprintf("/dev/%s/%s", thinPoolLv.Spec.VgName, thinLvStatus.Name)
+		path := "/dev/" + thinPoolLv.Spec.VgName + "/" + thinLvStatus.Name
 		isActuallyActive, err := commands.PathExistsOnHost(path)
 		if err != nil {
 			return err
 		}
 
-		if shouldBeActive && !isActuallyActive {
-			// activate LVM thin LV
+		if shouldBeActive {
+			if !isActuallyActive {
+				// activate LVM thin LV
 
-			_, err = commands.Lvm(
-				"lvchange",
-				"--devicesfile", thinPoolLv.Spec.VgName,
-				"--activate", "ey",
-				fmt.Sprintf("%s/%s", thinPoolLv.Spec.VgName, thinLvStatus.Name),
-			)
-			if err != nil {
-				return err
+				_, err = commands.Lvm(
+					"lvchange",
+					"--devicesfile", thinPoolLv.Spec.VgName,
+					"--activate", "ey",
+					thinPoolLv.Spec.VgName+"/"+thinLvStatus.Name,
+				)
+				if err != nil {
+					return err
+				}
 			}
 
 			// update status to reflect reality if necessary
@@ -330,17 +332,19 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinLvActivations(ctx context.Contex
 					return err
 				}
 			}
-		} else if !shouldBeActive && isActuallyActive {
-			// deactivate LVM thin LV
+		} else {
+			if isActuallyActive {
+				// deactivate LVM thin LV
 
-			_, err = commands.Lvm(
-				"lvchange",
-				"--devicesfile", thinPoolLv.Spec.VgName,
-				"--activate", "n",
-				fmt.Sprintf("%s/%s", thinPoolLv.Spec.VgName, thinLvStatus.Name),
-			)
-			if err != nil {
-				return err
+				_, err = commands.Lvm(
+					"lvchange",
+					"--devicesfile", thinPoolLv.Spec.VgName,
+					"--activate", "n",
+					thinPoolLv.Spec.VgName+"/"+thinLvStatus.Name,
+				)
+				if err != nil {
+					return err
+				}
 			}
 
 			// update status to reflect reality if necessary
