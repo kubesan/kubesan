@@ -8,6 +8,8 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -215,4 +217,23 @@ func DeactivateThinLv(ctx context.Context, client client.Client, oldThinPoolLv, 
 		return util.NewWatchPending("waiting for ThinLv deactivation")
 	}
 	return nil
+}
+
+// Return the list of interested nodes, given the list of staged nodes.
+// Order matters; the ThinPoolLv plans to activate the first returned node.
+func InterestedNodes(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv, attachList []string) []string {
+	// If the pool has any temporary snapshots active as a clone
+	// source, then the node where they are activated MUST remain
+	// active until the cloning is done.
+	if thinPoolLv.Spec.ActiveOnNode != "" {
+		for i := range thinPoolLv.Spec.ThinLvs {
+			thinLvSpec := &thinPoolLv.Spec.ThinLvs[i]
+			if strings.Contains(thinLvSpec.Name, "clone-") && thinLvSpec.State.Name == v1alpha1.ThinLvSpecStateNameActive {
+				return append([]string{thinPoolLv.Spec.ActiveOnNode}, slices.DeleteFunc(attachList, func(node string) bool {
+					return node == thinPoolLv.Spec.ActiveOnNode
+				})...)
+			}
+		}
+	}
+	return attachList
 }

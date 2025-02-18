@@ -77,7 +77,7 @@ func (r *VolumeNodeReconciler) reconcileThinAttaching(ctx context.Context, volum
 	}
 
 	// Update the ThinPool activation claims.
-	thinPoolLv.Spec.ActiveOnNode = volume.Spec.AttachToNodes[0]
+	thinPoolLv.Spec.ActiveOnNode = thinpoollv.InterestedNodes(ctx, thinPoolLv, volume.Spec.AttachToNodes)[0]
 	if err := thinpoollv.UpdateThinPoolLv(ctx, r.Client, oldThinPoolLv, thinPoolLv); err != nil {
 		return err
 	}
@@ -129,28 +129,30 @@ func (r *VolumeNodeReconciler) reconcileThinDetaching(ctx context.Context, volum
 
 	thinLvName := thinpoollv.VolumeToThinLvName(volume.Name)
 	thinLvSpec := thinPoolLv.Spec.FindThinLv(thinLvName)
-	// TODO: Do not mark this LV inactive if there is still some other
-	// snapshot being created in the same thin pool
-	if len(volume.Spec.AttachToNodes) == 0 {
-		if thinLvSpec != nil && thinLvSpec.State.Name == v1alpha1.ThinLvSpecStateNameActive {
-			thinLvSpec.State.Name = v1alpha1.ThinLvSpecStateNameInactive
-		}
-	} else {
-		thinPoolLv.Spec.ActiveOnNode = volume.Spec.AttachToNodes[0]
+	if len(volume.Spec.AttachToNodes) == 0 && thinLvSpec != nil && thinLvSpec.State.Name == v1alpha1.ThinLvSpecStateNameActive {
+		thinLvSpec.State.Name = v1alpha1.ThinLvSpecStateNameInactive
 	}
-
+	nodes := thinpoollv.InterestedNodes(ctx, thinPoolLv, volume.Spec.AttachToNodes)
+	if len(nodes) == 0 {
+		thinPoolLv.Spec.ActiveOnNode = ""
+	} else {
+		thinPoolLv.Spec.ActiveOnNode = nodes[0]
+	}
 	if err := thinpoollv.UpdateThinPoolLv(ctx, r.Client, oldThinPoolLv, thinPoolLv); err != nil {
 		return err
 	}
-	if thinPoolLv.Status.ActiveOnNode == config.LocalNodeName {
-		return util.NewWatchPending("waiting for thinlv deactivation")
+	if len(volume.Spec.AttachToNodes) == 0 {
+		thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvName)
+		if thinLvStatus != nil && thinLvStatus.State.Name == v1alpha1.ThinLvStatusStateNameActive {
+			return util.NewWatchPending("waiting for thinlv deactivation")
+		}
 	}
 	return nil
 }
 
 // Handle any NBD client or server that needs to be cleaned up before
 // detaching or migrating a node activation.
-func (r *VolumeNodeReconciler) reconcileThinNBDCleanup(ctx context.Context, volume *v1alpha1.Volume, sizeBytes int64) error {
+func (r *VolumeNodeReconciler) reconcileThinNBDCleanup(ctx context.Context, volume *v1alpha1.Volume, thinPoolLv *v1alpha1.ThinPoolLv, sizeBytes int64) error {
 	nbdExport := &v1alpha1.NBDExport{}
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
@@ -177,7 +179,7 @@ func (r *VolumeNodeReconciler) reconcileThinNBDCleanup(ctx context.Context, volu
 		}
 	}
 
-	if nbd.ShouldStopExport(nbdExport, volume.Spec.AttachToNodes, sizeBytes) {
+	if nbd.ShouldStopExport(nbdExport, thinpoollv.InterestedNodes(ctx, thinPoolLv, volume.Spec.AttachToNodes), sizeBytes) {
 		log.Info("Cleaning up NBD server", "export", volume.Status.NBDExport)
 		if nbdExport.Spec.Path != "" {
 			nbdExport.Spec.Path = ""
@@ -205,7 +207,7 @@ func (r *VolumeNodeReconciler) reconcileThinNBDCleanup(ctx context.Context, volu
 func (r *VolumeNodeReconciler) reconcileThinNBDSetup(ctx context.Context, volume *v1alpha1.Volume, thinPoolLv *v1alpha1.ThinPoolLv) error {
 	thinLvName := thinpoollv.VolumeToThinLvName(volume.Name)
 	thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvName)
-	nodes := volume.Spec.AttachToNodes
+	nodes := thinpoollv.InterestedNodes(ctx, thinPoolLv, volume.Spec.AttachToNodes)
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
 	if !isThinLvActiveOnLocalNode(thinPoolLv, thinLvName) {
@@ -385,7 +387,7 @@ func (r *VolumeNodeReconciler) reconcileThin(ctx context.Context, volume *v1alph
 		}
 		return errors.NewBadRequest("unexpected missing blob")
 	}
-	if err := r.reconcileThinNBDCleanup(ctx, volume, thinLvStatus.SizeBytes); err != nil {
+	if err := r.reconcileThinNBDCleanup(ctx, volume, thinPoolLv, thinLvStatus.SizeBytes); err != nil {
 		return err
 	}
 
