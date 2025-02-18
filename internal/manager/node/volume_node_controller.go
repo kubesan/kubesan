@@ -71,7 +71,8 @@ func (r *VolumeNodeReconciler) reconcileThinAttaching(ctx context.Context, volum
 		thinLvSpec.State.Name = v1alpha1.ThinLvSpecStateNameActive
 	}
 
-	if err := dm.Create(ctx, volume.Name, thinLvStatus.SizeBytes); err != nil {
+	sizeBytes := thinLvStatus.SizeBytes
+	if err := dm.Create(ctx, volume.Name, sizeBytes); err != nil {
 		return err
 	}
 
@@ -107,9 +108,10 @@ func (r *VolumeNodeReconciler) reconcileThinAttaching(ctx context.Context, volum
 		if err != nil {
 			return err
 		}
+		sizeBytes = nbdExport.Spec.SizeBytes
 	}
 	log.Info("Device ready to attach", "device", device)
-	return dm.Resume(ctx, volume.Name, thinLvStatus.SizeBytes, device)
+	return dm.Resume(ctx, volume.Name, sizeBytes, device)
 }
 
 // Ensure that the volume is detached from this node.
