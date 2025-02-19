@@ -97,16 +97,12 @@ func thinPoolLvNeedsActivation(thinPoolLv *v1alpha1.ThinPoolLv) (bool, error) {
 
 // Check whether work is pending that needs thin-pool activation. If yes,
 // assign a suitable node to thinPoolLv.Spec.ActiveOnNode (if it is not already
-// assigned). If no, clear thinPoolLv.Spec.ActiveOnNode.  Furthermore, if
-// thinPoolLv.Spec.ActiveOnNode wants to activate on a different node than
-// where thinPoolLv.Status.ActiveOnNode is already active, this rewrites
-// to a deactivation request on thinPoolLv.Status.ActiveOnNode.
+// assigned). If no, clear thinPoolLv.Spec.ActiveOnNode.
 //
 // This is a level-triggered operation. It must be called every time we start
 // or stop using the ThinPoolLv because its controller does not process updates
-// when thinPoolLv.Spec.ActiveOnNode is clear. The thin-pool must also be
-// deactivated once work has finished so it doesn't stay activated on a node
-// where they are not needed.
+// when thinPoolLv.Spec.ActiveOnNode is clear. It also makes it easier to
+// deactivate the pool when it has nothing to do.
 func recalcActiveOnNode(thinPoolLv *v1alpha1.ThinPoolLv) error {
 	needsActivation, err := thinPoolLvNeedsActivation(thinPoolLv)
 	if err != nil {
@@ -122,17 +118,6 @@ func recalcActiveOnNode(thinPoolLv *v1alpha1.ThinPoolLv) error {
 		thinPoolLv.Spec.ActiveOnNode = ""
 	}
 
-	if thinPoolLv.Status.ActiveOnNode != "" && thinPoolLv.Spec.ActiveOnNode != thinPoolLv.Status.ActiveOnNode {
-		// In order to switch Spec.ActiveOnNode, we must first tell
-		// the currently-active node to deactivate.
-		thinPoolLv.Spec.ActiveOnNode = thinPoolLv.Status.ActiveOnNode
-		for i := range thinPoolLv.Spec.ThinLvs {
-			thinLvSpec := &thinPoolLv.Spec.ThinLvs[i]
-			if thinLvSpec.State.Name == v1alpha1.ThinLvSpecStateNameActive {
-				thinLvSpec.State.Name = v1alpha1.ThinLvSpecStateNameInactive
-			}
-		}
-	}
 	return nil
 }
 
