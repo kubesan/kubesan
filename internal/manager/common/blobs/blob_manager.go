@@ -46,8 +46,9 @@ type BlobManager interface {
 	// ActivateBlobForCloneTarget activates a cloning target blob. The data
 	// source blob's BlobManager must be given so the target blob can be
 	// activated on the same node as the source blob. Make sure to call
-	// DeactivateBlobForCloneTarget to clean up later.
-	ActivateBlobForCloneTarget(ctx context.Context, name string, dataSrcBlobMgr BlobManager) error
+	// DeactivateBlobForCloneTarget to clean up later.  Returns the node
+	// name where activation took place.
+	ActivateBlobForCloneTarget(ctx context.Context, name string, dataSrcBlobMgr BlobManager) (string, error)
 
 	// DeactivateBlobForCloneSource deactivates a data source blob that was
 	// used for cloning. See ActivateBlobForCloneSource.

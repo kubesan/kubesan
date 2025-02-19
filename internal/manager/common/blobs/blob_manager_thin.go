@@ -331,12 +331,12 @@ func (m *ThinBlobManager) ActivateBlobForCloneSource(ctx context.Context, name s
 	return thinpoollv.ActivateThinLv(ctx, m.client, oldThinPoolLv, thinPoolLv, name)
 }
 
-func (m *ThinBlobManager) ActivateBlobForCloneTarget(ctx context.Context, name string, dataSrcBlobMgr BlobManager) error {
+func (m *ThinBlobManager) ActivateBlobForCloneTarget(ctx context.Context, name string, dataSrcBlobMgr BlobManager) (string, error) {
 	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
 
 	thinPoolLv, err := m.getThinPoolLv(ctx, m.poolName)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	oldThinPoolLv := thinPoolLv.DeepCopy()
@@ -348,12 +348,12 @@ func (m *ThinBlobManager) ActivateBlobForCloneTarget(ctx context.Context, name s
 	dataSrcThinBlobMgr, ok := dataSrcBlobMgr.(*ThinBlobManager)
 	if !ok {
 		log.Info("Data source is not a thin-pool")
-		return errors.NewBadRequest("Data source is not a thin-pool!")
+		return "", errors.NewBadRequest("Data source is not a thin-pool!")
 	}
 
 	dataSrcThinPoolLv, err := m.getThinPoolLv(ctx, dataSrcThinBlobMgr.poolName)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if thinPoolLv.Spec.ActiveOnNode == dataSrcThinPoolLv.Status.ActiveOnNode {
@@ -363,7 +363,7 @@ func (m *ThinBlobManager) ActivateBlobForCloneTarget(ctx context.Context, name s
 	}
 	thinPoolLv.Spec.ActiveOnNode = dataSrcThinPoolLv.Status.ActiveOnNode
 
-	return thinpoollv.ActivateThinLv(ctx, m.client, oldThinPoolLv, thinPoolLv, name)
+	return thinPoolLv.Spec.ActiveOnNode, thinpoollv.ActivateThinLv(ctx, m.client, oldThinPoolLv, thinPoolLv, name)
 }
 
 func (m *ThinBlobManager) DeactivateBlobForCloneSource(ctx context.Context, name string, owner client.Object) error {

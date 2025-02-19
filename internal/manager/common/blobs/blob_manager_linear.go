@@ -151,9 +151,9 @@ func (m *LinearBlobManager) ActivateBlobForCloneSource(ctx context.Context, name
 	return errors.NewBadRequest("linear volumes do not support cloning")
 }
 
-func (m *LinearBlobManager) ActivateBlobForCloneTarget(ctx context.Context, name string, dataSrcBlobMgr BlobManager) error {
+func (m *LinearBlobManager) ActivateBlobForCloneTarget(ctx context.Context, name string, dataSrcBlobMgr BlobManager) (string, error) {
 	// Linear volumes do not support cloning
-	return errors.NewBadRequest("linear volumes do not support cloning")
+	return "", errors.NewBadRequest("linear volumes do not support cloning")
 }
 
 func (m *LinearBlobManager) DeactivateBlobForCloneSource(ctx context.Context, name string, owner client.Object) error {

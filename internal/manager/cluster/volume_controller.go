@@ -124,7 +124,8 @@ func (r *VolumeReconciler) activateDataSource(ctx context.Context, blobMgr blobs
 
 	log.Info("Activated source blob for cloning", "tmpBlobName", tmpBlobName)
 
-	if err := blobMgr.ActivateBlobForCloneTarget(ctx, volume.Name, dataSrcBlobMgr); err != nil {
+	node, err := blobMgr.ActivateBlobForCloneTarget(ctx, volume.Name, dataSrcBlobMgr)
+	if err != nil {
 		return err
 	}
 
@@ -137,13 +138,14 @@ func (r *VolumeReconciler) activateDataSource(ctx context.Context, blobMgr blobs
 	if labels == nil {
 		labels = make(map[string]string)
 	}
-	if _, exists := labels[config.CloneSourceLabel]; !exists {
+	if _, exists := labels[config.PopulationNodeLabel]; !exists {
+		labels[config.PopulationNodeLabel] = node
 		labels[config.CloneSourceLabel] = dataSrcPool
 		volume.SetLabels(labels)
 		if err := r.Update(ctx, volume); err != nil {
 			return err
 		}
-		log.Info("Added label to volume", "volume", volume.Name, "pool", dataSrcPool)
+		log.Info("Added labels to volume", "volume", volume.Name, "pool", dataSrcPool, "populationNode", node)
 	}
 
 	return nil
@@ -185,8 +187,11 @@ func (r *VolumeReconciler) deactivateDataSource(ctx context.Context, blobMgr blo
 			return err
 		}
 		log.Info("Removed temporary snapshot for cloning", "tmpBlobName", tmpBlobName)
+	}
 
-		// clean up labels
+	// clean up labels
+	if _, exists := labels[config.PopulationNodeLabel]; exists {
+		delete(labels, config.PopulationNodeLabel)
 		delete(labels, config.CloneSourceLabel)
 		volume.SetLabels(labels)
 		if err := r.Update(ctx, volume); err != nil {

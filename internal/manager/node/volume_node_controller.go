@@ -335,15 +335,15 @@ func (r *VolumeNodeReconciler) reconcileThinPopulating(ctx context.Context, volu
 	sourcePathOnHost := getSourcePathOnHost(volume)
 	targetPathOnHost := devName(volume)
 
-	// only run on node where data source is activated
+	// We should only reach here on node where data source is already activated
 
 	if exists, _ := commands.PathExistsOnHost(sourcePathOnHost); !exists {
 		log.Info("Source path does not exist on host", "path", sourcePathOnHost)
-		return nil
+		return errors.NewBadRequest("unexpected missing source mount")
 	}
 	if exists, _ := commands.PathExistsOnHost(targetPathOnHost); !exists {
 		log.Info("Target path does not exist on host", "path", targetPathOnHost)
-		return nil
+		return errors.NewBadRequest("unexpected missing destination mount")
 	}
 
 	work := &ddWork{
@@ -481,8 +481,10 @@ func (r *VolumeNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// perform data population
 
+	labels := volume.GetLabels()
 	if meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionLvCreated) &&
-		!meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionDataSourceCompleted) {
+		!meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionDataSourceCompleted) &&
+		labels != nil && labels[config.PopulationNodeLabel] == config.LocalNodeName {
 		var err error
 
 		switch volume.Spec.Mode {
