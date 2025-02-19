@@ -147,23 +147,23 @@ func (m *LinearBlobManager) SnapshotBlob(ctx context.Context, name string, bindi
 }
 
 func (m *LinearBlobManager) ActivateBlobForCloneSource(ctx context.Context, name string, owner client.Object) error {
-	// Linear volumes do not support cloning
+	// Linear volumes do not support clone source
 	return errors.NewBadRequest("linear volumes do not support cloning")
 }
 
 func (m *LinearBlobManager) ActivateBlobForCloneTarget(ctx context.Context, name string, dataSrcBlobMgr BlobManager) (string, error) {
-	// Linear volumes do not support cloning
-	return "", errors.NewBadRequest("linear volumes do not support cloning")
+	// TODO Linear volumes could also support being a clone destination from a thin snapshot
+	return config.LocalNodeName, nil
 }
 
 func (m *LinearBlobManager) DeactivateBlobForCloneSource(ctx context.Context, name string, owner client.Object) error {
-	// Linear volumes do not support cloning
+	// Linear volumes do not support clone source
 	return errors.NewBadRequest("linear volumes do not support cloning")
 }
 
 func (m *LinearBlobManager) DeactivateBlobForCloneTarget(ctx context.Context, name string) error {
-	// Linear volumes do not support cloning
-	return errors.NewBadRequest("linear volumes do not support cloning")
+	// Deactivation was taken care of in the node reconciler.
+	return nil
 }
 
 // Return the actual size of the blob.

@@ -334,6 +334,11 @@ func (m *ThinBlobManager) ActivateBlobForCloneSource(ctx context.Context, name s
 func (m *ThinBlobManager) ActivateBlobForCloneTarget(ctx context.Context, name string, dataSrcBlobMgr BlobManager) (string, error) {
 	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
 
+	if dataSrcBlobMgr == nil {
+		// nothing to clone for empty source
+		return "", nil
+	}
+
 	thinPoolLv, err := m.getThinPoolLv(ctx, m.poolName)
 	if err != nil {
 		return "", err

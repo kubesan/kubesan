@@ -93,39 +93,37 @@ func (r *VolumeReconciler) getDataSourceBlob(ctx context.Context, volume *v1alph
 		blobMgr := blobs.NewThinBlobManager(r.Client, r.Scheme, dataSrcSnapshot.Spec.VgName, dataSrcSnapshot.Spec.SourceVolume)
 		return blobMgr, name, dataSrcSnapshot.Spec.SourceVolume, nil
 	default:
-		return nil, "", "", errors.NewBadRequest("cannot get data source for volume without contents")
+		return nil, "", "", nil
 	}
 }
 
 func (r *VolumeReconciler) activateDataSource(ctx context.Context, blobMgr blobs.BlobManager, volume *v1alpha1.Volume) error {
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
-	if volume.Spec.Contents.ContentsType == v1alpha1.VolumeContentsTypeEmpty {
-		return nil // do nothing
-	}
-
 	dataSrcBlobMgr, dataSrcBlobName, dataSrcPool, err := r.getDataSourceBlob(ctx, volume)
 	if err != nil {
 		return err
 	}
 
-	// create a temporary snapshot to clone from
+	if dataSrcBlobMgr != nil {
+		// create a temporary snapshot to clone from
 
-	tmpBlobName := cloneVolumeSnapshotName(volume.Name)
-	if err := dataSrcBlobMgr.SnapshotBlob(ctx, tmpBlobName, "", dataSrcBlobName, volume); err != nil {
-		return err
+		tmpBlobName := cloneVolumeSnapshotName(volume.Name)
+		if err := dataSrcBlobMgr.SnapshotBlob(ctx, tmpBlobName, "", dataSrcBlobName, volume); err != nil {
+			return err
+		}
+
+		log.Info("Temporary snapshot created for cloning", "tmpBlobName", tmpBlobName)
+
+		if err := dataSrcBlobMgr.ActivateBlobForCloneSource(ctx, tmpBlobName, volume); err != nil {
+			return err
+		}
+
+		log.Info("Activated source blob for cloning", "tmpBlobName", tmpBlobName)
 	}
-
-	log.Info("Temporary snapshot created for cloning", "tmpBlobName", tmpBlobName)
-
-	if err := dataSrcBlobMgr.ActivateBlobForCloneSource(ctx, tmpBlobName, volume); err != nil {
-		return err
-	}
-
-	log.Info("Activated source blob for cloning", "tmpBlobName", tmpBlobName)
 
 	node, err := blobMgr.ActivateBlobForCloneTarget(ctx, volume.Name, dataSrcBlobMgr)
-	if err != nil {
+	if err != nil || node == "" {
 		return err
 	}
 
@@ -140,7 +138,9 @@ func (r *VolumeReconciler) activateDataSource(ctx context.Context, blobMgr blobs
 	}
 	if _, exists := labels[config.PopulationNodeLabel]; !exists {
 		labels[config.PopulationNodeLabel] = node
-		labels[config.CloneSourceLabel] = dataSrcPool
+		if dataSrcPool != "" {
+			labels[config.CloneSourceLabel] = dataSrcPool
+		}
 		volume.SetLabels(labels)
 		if err := r.Update(ctx, volume); err != nil {
 			return err
@@ -153,10 +153,6 @@ func (r *VolumeReconciler) activateDataSource(ctx context.Context, blobMgr blobs
 
 func (r *VolumeReconciler) deactivateDataSource(ctx context.Context, blobMgr blobs.BlobManager, volume *v1alpha1.Volume) error {
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
-
-	if volume.Spec.Contents.ContentsType == v1alpha1.VolumeContentsTypeEmpty {
-		return nil // do nothing
-	}
 
 	if err := blobMgr.DeactivateBlobForCloneTarget(ctx, volume.Name); err != nil {
 		return err
@@ -257,15 +253,19 @@ func (r *VolumeReconciler) reconcilePrepareForResize(ctx context.Context, blobMg
 			if online {
 				return util.NewWatchPending("waiting for volume to be offline")
 			}
-			condition := metav1.Condition{
+			condition1 := metav1.Condition{
+				Type:    v1alpha1.VolumeConditionDataSourceCompleted,
+				Status:  metav1.ConditionFalse,
+				Reason:  "Resizing",
+				Message: "volume is unavailable while resizing",
+			}
+			condition2 := metav1.Condition{
 				Type:    v1alpha1.VolumeConditionAvailable,
 				Status:  metav1.ConditionFalse,
 				Reason:  "Resizing",
 				Message: "volume is unavailable while resizing",
 			}
-			// This update must happen now, rather than
-			// deferred to the end of reconcile.
-			if meta.SetStatusCondition(&volume.Status.Conditions, condition) {
+			if meta.SetStatusCondition(&volume.Status.Conditions, condition1) || meta.SetStatusCondition(&volume.Status.Conditions, condition2) {
 				needsUpdate = true
 			}
 		}
@@ -348,16 +348,24 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 		log.Info("activateDataSource succeeded")
 
 		// Shortcut when data population is not required
-		if volume.Spec.Contents.ContentsType == v1alpha1.VolumeContentsTypeEmpty {
-			condition := metav1.Condition{
+		var condition metav1.Condition
+		if volume.Spec.Contents.ContentsType == v1alpha1.VolumeContentsTypeEmpty && !blobMgr.ExpansionMustBeOffline() {
+			condition = metav1.Condition{
 				Type:    v1alpha1.VolumeConditionDataSourceCompleted,
 				Status:  metav1.ConditionTrue,
 				Reason:  "Completed",
 				Message: "population from data source completed",
 			}
-			if meta.SetStatusCondition(&volume.Status.Conditions, condition) {
-				needsUpdate = true
+		} else if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable) {
+			condition = metav1.Condition{
+				Type:    v1alpha1.VolumeConditionAbnormal,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Populating",
+				Message: "volume unavailable during initial population or expansion",
 			}
+		}
+		if meta.SetStatusCondition(&volume.Status.Conditions, condition) {
+			needsUpdate = true
 		}
 	}
 
@@ -370,6 +378,13 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 		condition := metav1.Condition{
 			Type:    v1alpha1.VolumeConditionAvailable,
 			Status:  metav1.ConditionTrue,
+			Reason:  "Available",
+			Message: "volume ready for use",
+		}
+		meta.SetStatusCondition(&volume.Status.Conditions, condition)
+		condition = metav1.Condition{
+			Type:    v1alpha1.VolumeConditionAbnormal,
+			Status:  metav1.ConditionFalse,
 			Reason:  "Available",
 			Message: "volume ready for use",
 		}

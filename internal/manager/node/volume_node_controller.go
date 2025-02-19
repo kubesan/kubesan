@@ -322,7 +322,13 @@ func getSourcePathOnHost(volume *v1alpha1.Volume) string {
 	return "/dev/" + vgName + "/" + thinpoollv.VolumeToThinLvName("clone-"+volume.Name)
 }
 
+// Populate a Thin volume from a snapshot source.
 func (r *VolumeNodeReconciler) reconcileThinPopulating(ctx context.Context, volume *v1alpha1.Volume) error {
+	if volume.Spec.Contents.ContentsType == v1alpha1.VolumeContentsTypeEmpty {
+		// Empty volumes were done as no-op in cluster reconcile.
+		return errors.NewBadRequest("unexpected thin source")
+	}
+
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
 	workName := "dd-" + volume.Name
@@ -350,20 +356,37 @@ func (r *VolumeNodeReconciler) reconcileThinPopulating(ctx context.Context, volu
 		sourcePathOnHost: sourcePathOnHost,
 		targetPathOnHost: targetPathOnHost,
 	}
-	if err := r.workers.Run(workName, volume, work); err != nil {
+	return r.workers.Run(workName, volume, work)
+}
+
+// Populate a Linear volume from an empty source (that is, zero the image).
+func (r *VolumeNodeReconciler) reconcileLinearPopulating(ctx context.Context, volume *v1alpha1.Volume) error {
+	if volume.Spec.Contents.ContentsType != v1alpha1.VolumeContentsTypeEmpty {
+		// TODO allow linear to be populated from source
+		return errors.NewBadRequest("unexpected linear source")
+	}
+
+	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
+
+	// Activate so that the node reconciler can run blkdiscard.
+	_, err := commands.Lvm("lvchange",
+		"--devicesfile", volume.Spec.VgName,
+		"--activate", "ey",
+		volume.Spec.VgName+"/"+volume.Name)
+	if err != nil {
 		return err
 	}
 
-	// signal to the cluster controller that data population is done
+	targetPathOnHost := "/dev/" + volume.Spec.VgName + "/" + volume.Name
 
-	condition := metav1.Condition{
-		Type:    v1alpha1.VolumeConditionDataSourceCompleted,
-		Status:  metav1.ConditionTrue,
-		Reason:  "Completed",
-		Message: "population from data source completed",
-	}
-	meta.SetStatusCondition(&volume.Status.Conditions, condition)
-	return r.statusUpdate(ctx, volume)
+	// TODO Perform blkdiscard here, rather than in blob_manager_linear.
+	log.Info("perform block zero here instead of in cluster manager", "device", targetPathOnHost)
+
+	_, err = commands.Lvm("lvchange",
+		"--devicesfile", volume.Spec.VgName,
+		"--activate", "n",
+		volume.Spec.VgName+"/"+volume.Name)
+	return err
 }
 
 func (r *VolumeNodeReconciler) reconcileThin(ctx context.Context, volume *v1alpha1.Volume) error {
@@ -490,15 +513,33 @@ func (r *VolumeNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		switch volume.Spec.Mode {
 		case v1alpha1.VolumeModeThin:
 			err = r.reconcileThinPopulating(ctx, volume)
+		case v1alpha1.VolumeModeLinear:
+			err = r.reconcileLinearPopulating(ctx, volume)
 		default:
 			err = errors.NewBadRequest("invalid volume mode for data population")
 		}
 
-		if watch, ok := err.(*util.WatchPending); ok {
-			log.Info("reconcile waiting for Watch during data population", "why", watch.Why)
-			return ctrl.Result{}, nil // wait until Watch triggers
+		if err != nil || volume.DeletionTimestamp != nil {
+			if watch, ok := err.(*util.WatchPending); ok {
+				log.Info("reconcile waiting for Watch during data population", "why", watch.Why)
+				return ctrl.Result{}, nil // wait until Watch triggers
+			}
+			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, err
+
+		// signal to the cluster controller that data population is done
+
+		condition := metav1.Condition{
+			Type:    v1alpha1.VolumeConditionDataSourceCompleted,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Completed",
+			Message: "population from data source completed",
+		}
+		if meta.SetStatusCondition(&volume.Status.Conditions, condition) {
+			if err := r.statusUpdate(ctx, volume); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
 	}
 
 	// check if ready for operation
