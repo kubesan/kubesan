@@ -10,7 +10,7 @@ images:
     newName: quay.io/kubesan/kubesan
     # To cut a release, bump the version string in
     # internal/common/config/config.go, then copy it here in place of 'latest'.
-    newTag: latest
+    newTag: v0.10.2
 
 labels:
   - pairs:
@@ -18,7 +18,7 @@ labels:
     includeSelectors: true
     includeTemplates: true
   - pairs:
-      app.kubernetes.io/version: latest
+      app.kubernetes.io/version: v0.10.2
     includeTemplates: true
 
 resources:
