@@ -3,7 +3,7 @@
 # Usage: ksan-supported-modes [<mode1> ...]
 ksan-supported-modes() {
     for allowed in "$@"; do
-        if [[ "$mode" == "$allowed" ]]; then
+        if [[ "$mode" == "${allowed,,}" ]]; then
             return
         fi
     done
@@ -48,7 +48,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: $name
 spec:
-  storageClassName: kubesan
+  storageClassName: kubesan-$mode
   accessModes:
     - $access
   resources:
@@ -90,7 +90,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: $name
 spec:
-  storageClassName: kubesan
+  storageClassName: kubesan-$mode
   accessModes:
     - ReadWriteOnce
   resources:

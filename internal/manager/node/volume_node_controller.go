@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -71,12 +72,13 @@ func (r *VolumeNodeReconciler) reconcileThinAttaching(ctx context.Context, volum
 		thinLvSpec.State.Name = v1alpha1.ThinLvSpecStateNameActive
 	}
 
-	if err := dm.Create(ctx, volume.Name, thinLvStatus.SizeBytes); err != nil {
+	sizeBytes := thinLvStatus.SizeBytes
+	if err := dm.Create(ctx, volume.Name, sizeBytes); err != nil {
 		return err
 	}
 
 	// Update the ThinPool activation claims.
-	thinPoolLv.Spec.ActiveOnNode = volume.Spec.AttachToNodes[0]
+	thinPoolLv.Spec.ActiveOnNode = thinpoollv.InterestedNodes(ctx, thinPoolLv, volume.Spec.AttachToNodes)[0]
 	if err := thinpoollv.UpdateThinPoolLv(ctx, r.Client, oldThinPoolLv, thinPoolLv); err != nil {
 		return err
 	}
@@ -107,9 +109,10 @@ func (r *VolumeNodeReconciler) reconcileThinAttaching(ctx context.Context, volum
 		if err != nil {
 			return err
 		}
+		sizeBytes = nbdExport.Spec.SizeBytes
 	}
 	log.Info("Device ready to attach", "device", device)
-	return dm.Resume(ctx, volume.Name, thinLvStatus.SizeBytes, device)
+	return dm.Resume(ctx, volume.Name, sizeBytes, device)
 }
 
 // Ensure that the volume is detached from this node.
@@ -127,28 +130,30 @@ func (r *VolumeNodeReconciler) reconcileThinDetaching(ctx context.Context, volum
 
 	thinLvName := thinpoollv.VolumeToThinLvName(volume.Name)
 	thinLvSpec := thinPoolLv.Spec.FindThinLv(thinLvName)
-	// TODO: Do not mark this LV inactive if there is still some other
-	// snapshot being created in the same thin pool
-	if len(volume.Spec.AttachToNodes) == 0 {
-		if thinLvSpec != nil && thinLvSpec.State.Name == v1alpha1.ThinLvSpecStateNameActive {
-			thinLvSpec.State.Name = v1alpha1.ThinLvSpecStateNameInactive
-		}
-	} else {
-		thinPoolLv.Spec.ActiveOnNode = volume.Spec.AttachToNodes[0]
+	if len(volume.Spec.AttachToNodes) == 0 && thinLvSpec != nil && thinLvSpec.State.Name == v1alpha1.ThinLvSpecStateNameActive {
+		thinLvSpec.State.Name = v1alpha1.ThinLvSpecStateNameInactive
 	}
-
+	nodes := thinpoollv.InterestedNodes(ctx, thinPoolLv, volume.Spec.AttachToNodes)
+	if len(nodes) == 0 {
+		thinPoolLv.Spec.ActiveOnNode = ""
+	} else {
+		thinPoolLv.Spec.ActiveOnNode = nodes[0]
+	}
 	if err := thinpoollv.UpdateThinPoolLv(ctx, r.Client, oldThinPoolLv, thinPoolLv); err != nil {
 		return err
 	}
-	if thinPoolLv.Status.ActiveOnNode == config.LocalNodeName {
-		return util.NewWatchPending("waiting for thinlv deactivation")
+	if len(volume.Spec.AttachToNodes) == 0 {
+		thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvName)
+		if thinLvStatus != nil && thinLvStatus.State.Name == v1alpha1.ThinLvStatusStateNameActive {
+			return util.NewWatchPending("waiting for thinlv deactivation")
+		}
 	}
 	return nil
 }
 
 // Handle any NBD client or server that needs to be cleaned up before
 // detaching or migrating a node activation.
-func (r *VolumeNodeReconciler) reconcileThinNBDCleanup(ctx context.Context, volume *v1alpha1.Volume, sizeBytes int64) error {
+func (r *VolumeNodeReconciler) reconcileThinNBDCleanup(ctx context.Context, volume *v1alpha1.Volume, thinPoolLv *v1alpha1.ThinPoolLv, sizeBytes int64) error {
 	nbdExport := &v1alpha1.NBDExport{}
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
@@ -175,7 +180,7 @@ func (r *VolumeNodeReconciler) reconcileThinNBDCleanup(ctx context.Context, volu
 		}
 	}
 
-	if nbd.ShouldStopExport(nbdExport, volume.Spec.AttachToNodes, sizeBytes) {
+	if nbd.ShouldStopExport(nbdExport, thinpoollv.InterestedNodes(ctx, thinPoolLv, volume.Spec.AttachToNodes), sizeBytes) {
 		log.Info("Cleaning up NBD server", "export", volume.Status.NBDExport)
 		if nbdExport.Spec.Path != "" {
 			nbdExport.Spec.Path = ""
@@ -203,7 +208,7 @@ func (r *VolumeNodeReconciler) reconcileThinNBDCleanup(ctx context.Context, volu
 func (r *VolumeNodeReconciler) reconcileThinNBDSetup(ctx context.Context, volume *v1alpha1.Volume, thinPoolLv *v1alpha1.ThinPoolLv) error {
 	thinLvName := thinpoollv.VolumeToThinLvName(volume.Name)
 	thinLvStatus := thinPoolLv.Status.FindThinLv(thinLvName)
-	nodes := volume.Spec.AttachToNodes
+	nodes := thinpoollv.InterestedNodes(ctx, thinPoolLv, volume.Spec.AttachToNodes)
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
 	if !isThinLvActiveOnLocalNode(thinPoolLv, thinLvName) {
@@ -223,10 +228,7 @@ func (r *VolumeNodeReconciler) reconcileThinNBDSetup(ctx context.Context, volume
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: config.Namespace,
-			Labels: map[string]string{
-				config.AppNameLabel:    "kubesan",
-				config.AppVersionLabel: config.Version,
-			},
+			Labels:    config.CommonLabels,
 		},
 		Spec: v1alpha1.NBDExportSpec{
 			Host:      config.LocalNodeName,
@@ -311,58 +313,161 @@ func (w *ddWork) Run(ctx context.Context) error {
 		return err
 	}
 
+	// To test long-running operations: _, err := commands.RunOnHostContext(ctx, "sleep", "30")
 	log.Info("Finished populating new volume", "sourcePathOnHost", w.sourcePathOnHost, "targetPathOnHost", w.targetPathOnHost)
 	return nil
 }
 
-func getSourcePathOnHost(volume *v1alpha1.Volume) string {
-	// Cross-VG cloning is not supported, so it's safe to use the target Volume's VG
-	vgName := volume.Spec.VgName
-	return "/dev/" + vgName + "/" + thinpoollv.VolumeToThinLvName("clone-"+volume.Name)
-}
+// Populate an activated destination volume from a snapshot source, and return its size.
+func (r *VolumeNodeReconciler) reconcileSourcePopulating(ctx context.Context, volume *v1alpha1.Volume, targetPathOnHost string) (int64, error) {
+	if volume.Spec.Contents.ContentsType == v1alpha1.VolumeContentsTypeEmpty {
+		return 0, errors.NewBadRequest("unexpected empty source")
+	}
 
-func (r *VolumeNodeReconciler) reconcileThinPopulating(ctx context.Context, volume *v1alpha1.Volume) error {
 	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
 
 	workName := "dd-" + volume.Name
 
 	if volume.DeletionTimestamp != nil {
 		log.Info("Canceling dd work due to volume deletion", "volumeName", volume.Name)
-		return r.workers.Cancel(workName) // stop dd
+		return 0, r.workers.Cancel(workName) // stop dd
 	}
 
-	sourcePathOnHost := getSourcePathOnHost(volume)
-	targetPathOnHost := devName(volume)
+	// Cross-VG cloning is not supported, so it's safe to use the target Volume's VG
+	vgName := volume.Spec.VgName
+	sourceLv := thinpoollv.VolumeToThinLvName("clone-" + volume.Name)
+	sourcePathOnHost := "/dev/" + vgName + "/" + sourceLv
 
-	// only run on node where data source is activated
+	// We should only reach here on node where data source is already activated
 
 	if exists, _ := commands.PathExistsOnHost(sourcePathOnHost); !exists {
 		log.Info("Source path does not exist on host", "path", sourcePathOnHost)
-		return nil
+		return 0, errors.NewBadRequest("unexpected missing source mount")
 	}
 	if exists, _ := commands.PathExistsOnHost(targetPathOnHost); !exists {
 		log.Info("Target path does not exist on host", "path", targetPathOnHost)
-		return nil
+		return 0, errors.NewBadRequest("unexpected missing destination mount")
 	}
 
 	work := &ddWork{
 		sourcePathOnHost: sourcePathOnHost,
 		targetPathOnHost: targetPathOnHost,
 	}
-	if err := r.workers.Run(workName, volume, work); err != nil {
+
+	err := r.workers.Run(workName, volume, work)
+	if err != nil {
+		return 0, err
+	}
+	return commands.LvmSize(vgName, sourceLv)
+}
+
+// Populate a Thin volume from a snapshot source.
+func (r *VolumeNodeReconciler) reconcileThinPopulating(ctx context.Context, volume *v1alpha1.Volume) error {
+	// Empty volumes were done as no-op in cluster reconcile.
+	_, err := r.reconcileSourcePopulating(ctx, volume, devName(volume))
+	return err
+}
+
+type blkdiscardWork struct {
+	device string
+	offset int64
+}
+
+func (w *blkdiscardWork) Run(ctx context.Context) error {
+	log := log.FromContext(ctx)
+	args := []string{"blkdiscard", "--zeroout", "--offset",
+		strconv.FormatInt(w.offset, 10), w.device}
+	log.Info("blkdiscard worker zeroing LV", "path", w.device, "command", args)
+	_, err := commands.RunOnHostContext(ctx, args...)
+	// To test long-running operations: _, err := commands.RunOnHostContext(ctx, "sleep", "30")
+	log.Info("blkdiscard worker finished", "path", w.device)
+	return err
+}
+
+// Returns a unique name for a blkdiscard work item
+func blkdiscardWorkName(volume *v1alpha1.Volume) string {
+	return "blkdiscard/" + volume.Spec.VgName + "/" + volume.Name
+}
+
+// Populate a Linear volume from any source.
+func (r *VolumeNodeReconciler) reconcileLinearPopulating(ctx context.Context, volume *v1alpha1.Volume) error {
+	log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
+
+	// Activate so that the node reconciler can run dd and/or blkdiscard.
+	_, err := commands.Lvm("lvchange",
+		"--devicesfile", volume.Spec.VgName,
+		"--activate", "ey",
+		volume.Spec.VgName+"/"+volume.Name)
+	if err != nil {
 		return err
 	}
 
-	// signal to the cluster controller that data population is done
-
-	condition := metav1.Condition{
-		Type:    v1alpha1.VolumeConditionDataSourceCompleted,
-		Status:  metav1.ConditionTrue,
-		Reason:  "Completed",
-		Message: "population from data source completed",
+	targetPathOnHost := "/dev/" + volume.Spec.VgName + "/" + volume.Name
+	LvmLvKeySafeOffset := config.Domain + "/safe-offset"
+	offset, err := commands.LvmLvGetCounter(volume.Spec.VgName, volume.Name, LvmLvKeySafeOffset)
+	if err != nil {
+		return err
 	}
-	meta.SetStatusCondition(&volume.Status.Conditions, condition)
-	return r.statusUpdate(ctx, volume)
+	log.Info("populating linear volume", "offset", offset)
+
+	// Populate the data, but only if it has not yet been populated.
+	if volume.Spec.Contents.ContentsType != v1alpha1.VolumeContentsTypeEmpty && offset == 0 {
+		log.Info("populating linear volume from source")
+		offset, err = r.reconcileSourcePopulating(ctx, volume, targetPathOnHost)
+		if err != nil {
+			return err
+		}
+
+		_, err = commands.LvmLvUpdateCounterIfLower(volume.Spec.VgName, volume.Name, LvmLvKeySafeOffset, offset)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Linear volumes contain the previous contents of the disk, which can
+	// be an information leak if multiple users have access to the same
+	// Volume Group. Zero the LV to avoid security issues.  Filesystems,
+	// or an explicit UnsafeFast wipe policy, can skip this wipe.
+	//
+	// We track how much of the image has been zeroed and then
+	// exposed to the user with a counter tag, in order to support
+	// image expansion.  We must never touch an offset prior to
+	// the stored value, and must never expose the image to the
+	// user while the stored value is less than the lv size.
+	if volume.DeletionTimestamp != nil {
+		log.Info("Canceling blkdiscard work due to volume deletion", "volumeName", volume.Name)
+		if err := r.workers.Cancel(blkdiscardWorkName(volume)); err != nil {
+			return err
+		}
+	} else if volume.Spec.Type.Block != nil {
+		sizeBytes, err := commands.LvmSize(volume.Spec.VgName, volume.Name)
+		if err != nil {
+			return err
+		}
+
+		if offset < sizeBytes && volume.Spec.WipePolicy != v1alpha1.VolumeWipePolicyUnsafeFast {
+			log.Info("populating linear volume with zeroes")
+			work := &blkdiscardWork{
+				device: targetPathOnHost,
+				offset: offset,
+			}
+			if err := r.workers.Run(blkdiscardWorkName(volume), volume, work); err != nil {
+				return err
+			}
+		}
+
+		_, err = commands.LvmLvUpdateCounterIfLower(volume.Spec.VgName, volume.Name, LvmLvKeySafeOffset, sizeBytes)
+		if err != nil {
+			return err
+		}
+	}
+
+	log.Info("done populating linear volume")
+	_, err = commands.Lvm("lvchange",
+		"--devicesfile", volume.Spec.VgName,
+		"--activate", "n",
+		volume.Spec.VgName+"/"+volume.Name)
+	return err
 }
 
 func (r *VolumeNodeReconciler) reconcileThin(ctx context.Context, volume *v1alpha1.Volume) error {
@@ -383,7 +488,7 @@ func (r *VolumeNodeReconciler) reconcileThin(ctx context.Context, volume *v1alph
 		}
 		return errors.NewBadRequest("unexpected missing blob")
 	}
-	if err := r.reconcileThinNBDCleanup(ctx, volume, thinLvStatus.SizeBytes); err != nil {
+	if err := r.reconcileThinNBDCleanup(ctx, volume, thinPoolLv, thinLvStatus.SizeBytes); err != nil {
 		return err
 	}
 
@@ -480,22 +585,42 @@ func (r *VolumeNodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// perform data population
 
+	labels := volume.GetLabels()
 	if meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionLvCreated) &&
-		!meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionDataSourceCompleted) {
+		!meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionDataSourceCompleted) &&
+		labels != nil && labels[config.PopulationNodeLabel] == config.LocalNodeName {
 		var err error
 
 		switch volume.Spec.Mode {
 		case v1alpha1.VolumeModeThin:
 			err = r.reconcileThinPopulating(ctx, volume)
+		case v1alpha1.VolumeModeLinear:
+			err = r.reconcileLinearPopulating(ctx, volume)
 		default:
 			err = errors.NewBadRequest("invalid volume mode for data population")
 		}
 
-		if watch, ok := err.(*util.WatchPending); ok {
-			log.Info("reconcile waiting for Watch during data population", "why", watch.Why)
-			return ctrl.Result{}, nil // wait until Watch triggers
+		if err != nil || volume.DeletionTimestamp != nil {
+			if watch, ok := err.(*util.WatchPending); ok {
+				log.Info("reconcile waiting for Watch during data population", "why", watch.Why)
+				return ctrl.Result{}, nil // wait until Watch triggers
+			}
+			return ctrl.Result{}, err
 		}
-		return ctrl.Result{}, err
+
+		// signal to the cluster controller that data population is done
+
+		condition := metav1.Condition{
+			Type:    v1alpha1.VolumeConditionDataSourceCompleted,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Completed",
+			Message: "population from data source completed",
+		}
+		if meta.SetStatusCondition(&volume.Status.Conditions, condition) {
+			if err := r.statusUpdate(ctx, volume); err != nil {
+				return ctrl.Result{}, err
+			}
+		}
 	}
 
 	// check if ready for operation

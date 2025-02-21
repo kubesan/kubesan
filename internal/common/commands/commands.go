@@ -365,26 +365,6 @@ func LvmSize(vgName string, lvName string) (int64, error) {
 	return strconv.ParseInt(strings.TrimSpace(string(output.Combined)), 10, 64)
 }
 
-// Calls a function with an LV activated temporarily
-func WithLvmLvActivated(vgName string, lvName string, shared bool, op func() error) (err error) {
-	vgLvName := fmt.Sprintf("%s/%s", vgName, lvName)
-	mode := "ey"
-	if shared {
-		mode = "sy"
-	}
-
-	_, err = Lvm("lvchange", "--devicesfile", vgName, "--activate", mode, vgLvName)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		_, err = Lvm("lvchange", "--devicesfile", vgName, "--activate", "n", vgLvName)
-	}()
-
-	return op()
-}
-
 // Run a command with nbd-client.
 func nbdClient(args ...string) (Output, error) {
 	log := log.FromContext(context.Background())

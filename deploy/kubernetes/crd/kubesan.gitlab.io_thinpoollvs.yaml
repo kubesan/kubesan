@@ -66,14 +66,10 @@ spec:
           spec:
             properties:
               activeOnNode:
-                description: |-
-                  Name of node where activation is needed, or empty.
-                  When changing, may only toggle between "" and non-empty.
+                description: Name of node where activation is needed, or empty.
                 maxLength: 253
                 pattern: ^[a-z0-9][-.a-z0-9]*$
                 type: string
-                x-kubernetes-validations:
-                - rule: (oldSelf==self)||((oldSelf=="")!=(self==""))
               sizeBytes:
                 description: Initial size of the thin pool.  Must be a multiple of
                   512.

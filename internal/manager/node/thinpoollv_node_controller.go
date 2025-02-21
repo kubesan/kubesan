@@ -19,6 +19,7 @@ import (
 	"gitlab.com/kubesan/kubesan/api/v1alpha1"
 	"gitlab.com/kubesan/kubesan/internal/common/commands"
 	"gitlab.com/kubesan/kubesan/internal/common/config"
+	"gitlab.com/kubesan/kubesan/internal/common/dm"
 	kubesanslices "gitlab.com/kubesan/kubesan/internal/common/slices"
 )
 
@@ -66,31 +67,15 @@ func (r *ThinPoolLvNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// TODO rebuild Status from on-disk thin-pool state to achieve fault tolerance (e.g. etcd out of sync with disk)
 
-	log.Info("ThinPoolLv is activated, proceeding with node reconcile()")
+	log.Info("ThinPoolLv is available, proceeding with node reconcile()")
 
-	stayActive, err := r.reconcileThinPoolLvActivation(ctx, thinPoolLv)
+	inCharge, err := r.reconcileThinPoolLvActivation(ctx, thinPoolLv)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// Thin LV commands like lvcreate(8) and lvremove(8) leave the
-	// thin-pool activated. Make sure to deactivate the thin-pool before
-	// returning, unless a thin LV has been activated.
-
-	if !stayActive {
-		defer func() {
-			_, _ = commands.Lvm(
-				"lvchange",
-				"--devicesfile", thinPoolLv.Spec.VgName,
-				"--activate", "n",
-				fmt.Sprintf("%s/%s", thinPoolLv.Spec.VgName, thinPoolLv.Name),
-			)
-		}()
-	}
-
-	// only continue when this node is the active node and we're not undergoing deletion
-
-	if (thinPoolLv.DeletionTimestamp != nil && len(thinPoolLv.Status.ThinLvs) == 0) || thinPoolLv.Spec.ActiveOnNode != config.LocalNodeName {
+	// Only continue when this node is the active node and we're not undergoing deletion.
+	if !inCharge {
 		log.Info("ThinPoolLv is not active on this node or is being deleted")
 		return ctrl.Result{}, nil
 	}
@@ -114,16 +99,41 @@ func (r *ThinPoolLvNodeReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
+	// lvm v2.03.30 and earlier have a bug where an lvremove of a
+	// thin lv can accidentally leave the thin pool exclusively locked.
+	// See https://gitlab.com/lvmteam/lvm2/-/commit/e3f0af8f1f.
+	// Workaround: deactivate the pool again.
+	// TODO Drop this for less lock churn once we depend on fixed lvm.
+	if thinPoolLv.Status.ActiveOnNode == "" {
+		if _, err := commands.Lvm(
+			"lvchange",
+			"--devicesfile", thinPoolLv.Spec.VgName,
+			"--activate", "n",
+			thinPoolLv.Spec.VgName+"/"+thinPoolLv.Name,
+		); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
 	return ctrl.Result{}, nil
 }
 
-// Returns true if the thin-pool should be active
+// Activate or deactive the pool on the current node, if necessary.
+// Returns true if the reconciler should handle ThinLvs as well.
 func (r *ThinPoolLvNodeReconciler) reconcileThinPoolLvActivation(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv) (bool, error) {
-	thinPoolLvShouldBeActive :=
+	thinPoolIsActive, err := dm.IsLvmActive(ctx, thinPoolLv.Spec.VgName, thinPoolLv.Name)
+	if err != nil {
+		return false, err
+	}
+	thinPoolLvShouldBeActive := thinPoolLv.Spec.ActiveOnNode == config.LocalNodeName &&
 		kubesanslices.Any(thinPoolLv.Spec.ThinLvs, func(spec v1alpha1.ThinLvSpec) bool { return spec.State.Name == v1alpha1.ThinLvSpecStateNameActive })
 
 	if thinPoolLvShouldBeActive {
-		if thinPoolLv.Spec.ActiveOnNode == config.LocalNodeName {
+		// If another node needs to deactivate first, wait for it.
+		if thinPoolLv.Status.ActiveOnNode != "" && thinPoolLv.Status.ActiveOnNode != config.LocalNodeName {
+			return false, nil
+		}
+		if !thinPoolIsActive {
 			// activate LVM thin pool LV
 
 			_, err := commands.Lvm(
@@ -131,86 +141,87 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinPoolLvActivation(ctx context.Con
 				"--devicesfile", thinPoolLv.Spec.VgName,
 				"--activate", "ey",
 				"--monitor", "y",
-				fmt.Sprintf("%s/%s", thinPoolLv.Spec.VgName, thinPoolLv.Name),
+				thinPoolLv.Spec.VgName+"/"+thinPoolLv.Name,
 			)
 			if err != nil {
-				return thinPoolLvShouldBeActive, err
+				return true, err
 			}
+		}
 
-			condition := metav1.Condition{
-				Type:    v1alpha1.ThinPoolLvConditionActive,
-				Status:  metav1.ConditionTrue,
-				Reason:  "Activated",
-				Message: "thin pool activated",
-			}
-			meta.SetStatusCondition(&thinPoolLv.Status.Conditions, condition)
-
+		condition := metav1.Condition{
+			Type:    v1alpha1.ThinPoolLvConditionActive,
+			Status:  metav1.ConditionTrue,
+			Reason:  "Activated",
+			Message: "thin pool activated",
+		}
+		if meta.SetStatusCondition(&thinPoolLv.Status.Conditions, condition) || thinPoolLv.Status.ActiveOnNode != config.LocalNodeName {
 			thinPoolLv.Status.ActiveOnNode = config.LocalNodeName
 
 			if err := r.statusUpdate(ctx, thinPoolLv); err != nil {
-				return thinPoolLvShouldBeActive, err
+				return true, err
 			}
 		}
-	} else {
-		if thinPoolLv.Status.ActiveOnNode == config.LocalNodeName {
-			// Deactivate all LVM thin LVs. The `vgchange
-			// --activate n --force` flag could be used on the
-			// thin-pool LV instead of deactivating thin LVs
-			// individually. However, the `--force` flag would hide
-			// issues like thin LVs going out of sync with
-			// Status.ThinLvs[] so fail noisily to aid debugging.
+	} else if thinPoolIsActive || thinPoolLv.Status.ActiveOnNode == config.LocalNodeName {
+		// Deactivate all LVM thin LVs. The `vgchange
+		// --activate n --force` flag could be used on the
+		// thin-pool LV instead of deactivating thin LVs
+		// individually. However, the `--force` flag would hide
+		// issues like thin LVs going out of sync with
+		// Status.ThinLvs[] so fail noisily to aid debugging.
 
-			for i := range thinPoolLv.Status.ThinLvs {
-				thinLvStatus := &thinPoolLv.Status.ThinLvs[i]
+		for i := range thinPoolLv.Status.ThinLvs {
+			thinLvStatus := &thinPoolLv.Status.ThinLvs[i]
 
-				output, err := commands.Lvm(
-					"lvchange",
-					"--devicesfile", thinPoolLv.Spec.VgName,
-					"--activate", "n",
-					fmt.Sprintf("%s/%s", thinPoolLv.Spec.VgName, thinLvStatus.Name),
-				)
-				if err != nil {
-					if strings.Contains(string(output.Combined), "ailed to find") {
-						// Ignore error if lv is already gone
-					} else {
-						return thinPoolLvShouldBeActive, err
-					}
-				}
-
-				thinLvStatus.State = v1alpha1.ThinLvStatusState{
-					Name: v1alpha1.ThinLvStatusStateNameInactive,
-				}
-			}
-
-			// deactivate LVM thin pool LV
-
-			_, err := commands.Lvm(
+			output, err := commands.Lvm(
 				"lvchange",
 				"--devicesfile", thinPoolLv.Spec.VgName,
 				"--activate", "n",
-				fmt.Sprintf("%s/%s", thinPoolLv.Spec.VgName, thinPoolLv.Name),
+				thinPoolLv.Spec.VgName+"/"+thinLvStatus.Name,
 			)
 			if err != nil {
-				return thinPoolLvShouldBeActive, err
+				if strings.Contains(string(output.Combined), "ailed to find") {
+					// Ignore error if lv is already gone
+				} else {
+					return false, err
+				}
 			}
 
-			condition := metav1.Condition{
-				Type:    v1alpha1.ThinPoolLvConditionActive,
-				Status:  metav1.ConditionFalse,
-				Reason:  "Deactivated",
-				Message: "thin pool deactivated",
+			thinLvStatus.State = v1alpha1.ThinLvStatusState{
+				Name: v1alpha1.ThinLvStatusStateNameInactive,
 			}
-			meta.SetStatusCondition(&thinPoolLv.Status.Conditions, condition)
+		}
 
+		// deactivate LVM thin pool LV
+
+		_, err := commands.Lvm(
+			"lvchange",
+			"--devicesfile", thinPoolLv.Spec.VgName,
+			"--activate", "n",
+			thinPoolLv.Spec.VgName+"/"+thinPoolLv.Name,
+		)
+		if err != nil {
+			return false, err
+		}
+
+		condition := metav1.Condition{
+			Type:    v1alpha1.ThinPoolLvConditionActive,
+			Status:  metav1.ConditionFalse,
+			Reason:  "Deactivated",
+			Message: "thin pool deactivated",
+		}
+		if meta.SetStatusCondition(&thinPoolLv.Status.Conditions, condition) || thinPoolLv.Status.ActiveOnNode != "" {
 			thinPoolLv.Status.ActiveOnNode = ""
 
 			if err := r.statusUpdate(ctx, thinPoolLv); err != nil {
-				return thinPoolLvShouldBeActive, err
+				return false, err
 			}
 		}
 	}
 
-	return thinPoolLvShouldBeActive, nil
+	inCharge := thinPoolLv.Spec.ActiveOnNode == config.LocalNodeName &&
+		(thinPoolLv.Status.ActiveOnNode == "" || thinPoolLv.Status.ActiveOnNode == config.LocalNodeName) &&
+		(thinPoolLv.DeletionTimestamp == nil || len(thinPoolLv.Spec.ThinLvs) > 0)
+	return inCharge, nil
 }
 
 func (r *ThinPoolLvNodeReconciler) reconcileThinLvDeletion(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv) error {
@@ -288,7 +299,7 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinLvCreation(ctx context.Context, 
 }
 
 func (r *ThinPoolLvNodeReconciler) reconcileThinLvActivations(ctx context.Context, thinPoolLv *v1alpha1.ThinPoolLv) error {
-	// deactivate thin LVs that are active on this node but shouldn't be
+	// Update thin LV activations to match spec
 
 	for i := range thinPoolLv.Status.ThinLvs {
 		thinLvStatus := &thinPoolLv.Status.ThinLvs[i]
@@ -297,23 +308,25 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinLvActivations(ctx context.Contex
 		shouldBeActive := thinLvSpec != nil && thinLvSpec.State.Name == v1alpha1.ThinLvSpecStateNameActive
 		isActiveInStatus := thinLvStatus.State.Name == v1alpha1.ThinLvStatusStateNameActive
 
-		path := fmt.Sprintf("/dev/%s/%s", thinPoolLv.Spec.VgName, thinLvStatus.Name)
+		path := "/dev/" + thinPoolLv.Spec.VgName + "/" + thinLvStatus.Name
 		isActuallyActive, err := commands.PathExistsOnHost(path)
 		if err != nil {
 			return err
 		}
 
-		if shouldBeActive && !isActuallyActive {
-			// activate LVM thin LV
+		if shouldBeActive {
+			if !isActuallyActive {
+				// activate LVM thin LV
 
-			_, err = commands.Lvm(
-				"lvchange",
-				"--devicesfile", thinPoolLv.Spec.VgName,
-				"--activate", "ey",
-				fmt.Sprintf("%s/%s", thinPoolLv.Spec.VgName, thinLvStatus.Name),
-			)
-			if err != nil {
-				return err
+				_, err = commands.Lvm(
+					"lvchange",
+					"--devicesfile", thinPoolLv.Spec.VgName,
+					"--activate", "ey",
+					thinPoolLv.Spec.VgName+"/"+thinLvStatus.Name,
+				)
+				if err != nil {
+					return err
+				}
 			}
 
 			// update status to reflect reality if necessary
@@ -330,17 +343,19 @@ func (r *ThinPoolLvNodeReconciler) reconcileThinLvActivations(ctx context.Contex
 					return err
 				}
 			}
-		} else if !shouldBeActive && isActuallyActive {
-			// deactivate LVM thin LV
+		} else {
+			if isActuallyActive {
+				// deactivate LVM thin LV
 
-			_, err = commands.Lvm(
-				"lvchange",
-				"--devicesfile", thinPoolLv.Spec.VgName,
-				"--activate", "n",
-				fmt.Sprintf("%s/%s", thinPoolLv.Spec.VgName, thinLvStatus.Name),
-			)
-			if err != nil {
-				return err
+				_, err = commands.Lvm(
+					"lvchange",
+					"--devicesfile", thinPoolLv.Spec.VgName,
+					"--activate", "n",
+					thinPoolLv.Spec.VgName+"/"+thinLvStatus.Name,
+				)
+				if err != nil {
+					return err
+				}
 			}
 
 			// update status to reflect reality if necessary

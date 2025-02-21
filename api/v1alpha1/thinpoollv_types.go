@@ -34,8 +34,6 @@ type ThinPoolLvSpec struct {
 	ThinLvs []ThinLvSpec `json:"thinLvs,omitempty"`
 
 	// Name of node where activation is needed, or empty.
-	// When changing, may only toggle between "" and non-empty.
-	// +kubebuilder:validation:XValidation:rule=(oldSelf==self)||((oldSelf=="")!=(self==""))
 	// + This rule must permit RFC 1123 DNS subdomain names.
 	// +kubebuilder:validation:MaxLength=253
 	// +kubebuilder:validation:Pattern="^[a-z0-9][-.a-z0-9]*$"

@@ -225,3 +225,18 @@ func GetSize(ctx context.Context, name string) (int64, error) {
 	}
 	return 512 * sectors, nil
 }
+
+// Determine if the given VG/LV device is active on the current node.
+// Querying via dmsetup is faster than using lvs, because it does not
+// require any coordination with lvmlockd.
+func IsLvmActive(ctx context.Context, vgName string, lvName string) (bool, error) {
+	output, err := commands.Dmsetup("info",
+		"--select", "vg_name="+vgName+" && lv_name="+lvName,
+		"--columns",
+		"--noheadings",
+	)
+	if err != nil {
+		return false, err
+	}
+	return string(output.Combined) != "", nil
+}

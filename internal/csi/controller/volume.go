@@ -81,9 +81,6 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 	if err != nil {
 		return nil, err
 	}
-	if volumeContents.ContentsType != v1alpha1.VolumeContentsTypeEmpty && volumeMode != v1alpha1.VolumeModeThin {
-		return nil, status.Error(codes.Unimplemented, "cannot clone into a linear volume")
-	}
 
 	// We don't advertise MODIFY_VOLUME, so mutable parameters are unexpected.
 	if len(req.MutableParameters) > 0 {
@@ -112,10 +109,7 @@ func (s *ControllerServer) CreateVolume(ctx context.Context, req *csi.CreateVolu
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: config.Namespace,
-			Labels: map[string]string{
-				config.AppNameLabel:    "kubesan",
-				config.AppVersionLabel: config.Version,
-			},
+			Labels:    config.CommonLabels,
 		},
 		Spec: v1alpha1.VolumeSpec{
 			VgName:      lvmVolumeGroup,
@@ -255,6 +249,9 @@ func (s *ControllerServer) getVolumeContents(ctx context.Context, req *csi.Creat
 		case err != nil:
 			return nil, status.Errorf(codes.InvalidArgument, "unable to inspect source volume: %v", err)
 
+		case volume.DeletionTimestamp != nil:
+			return nil, status.Error(codes.NotFound, "source volume is marked for deletion")
+
 		case volume.Spec.VgName != vgName:
 			// TODO We could possibly relax this for multiple VGs that share a common node in topology
 			return nil, status.Error(codes.InvalidArgument, "source volume does not live in same volume group as destination")
@@ -297,6 +294,9 @@ func (s *ControllerServer) getVolumeContents(ctx context.Context, req *csi.Creat
 
 		case err != nil:
 			return nil, status.Errorf(codes.InvalidArgument, "unable to inspect source snapshot: %v", err)
+
+		case snapshot.DeletionTimestamp != nil:
+			return nil, status.Error(codes.NotFound, "source snapshot is marked for deletion")
 
 		case snapshot.Spec.VgName != vgName:
 			// TODO We could possibly relax this for multiple VGs that share a common node in topology

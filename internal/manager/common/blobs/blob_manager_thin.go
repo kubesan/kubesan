@@ -63,10 +63,7 @@ func (m *ThinBlobManager) createThinPoolLv(ctx context.Context, name string, siz
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: config.Namespace,
-			Labels: map[string]string{
-				config.AppNameLabel:    "kubesan",
-				config.AppVersionLabel: config.Version,
-			},
+			Labels:    config.CommonLabels,
 		},
 		Spec: v1alpha1.ThinPoolLvSpec{
 			VgName: m.vgName,
@@ -152,7 +149,7 @@ func (m *ThinBlobManager) forgetRemovedThinLv(ctx context.Context, thinPoolLv *v
 }
 
 // Create or expand a thin volume blob within the manager's pool.
-func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, binding string, sizeBytes int64, skipWipe bool, owner client.Object) error {
+func (m *ThinBlobManager) CreateBlob(ctx context.Context, name string, binding string, sizeBytes int64, owner client.Object) error {
 	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
 
 	thinPoolLv, err := m.createThinPoolLv(ctx, name, sizeBytes, owner)
@@ -221,7 +218,7 @@ func (m *ThinBlobManager) SnapshotBlob(ctx context.Context, name string, binding
 	oldThinPoolLv := thinPoolLv.DeepCopy()
 
 	sourceThinLv := thinPoolLv.Spec.FindThinLv(thinpoollv.VolumeToThinLvName(sourceName))
-	if sourceThinLv == nil {
+	if sourceThinLv == nil || sourceThinLv.State.Name == v1alpha1.ThinLvSpecStateNameRemoved {
 		log.Error(err, "SnapshotBlob sourceThinLv not found")
 		return errors.NewBadRequest("sourceThinLv not found")
 	}
@@ -293,12 +290,19 @@ func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string, owner cli
 	}
 
 	// Normally when a Volume or Snapshot is deleted k8s automatically
-	// removes the owner reference, but cloning creates temporary snapshot
-	// LVs that are removed when cloning completes and the target Volume
-	// still lives for a long time. Try to remove the owner reference here
-	// but ignore errors in case k8s already removed it.
-
+	// removes the owner reference; and if it was the last owner reference,
+	// it also marks the ThinPoolLv for deletion.  But cloning creates
+	// temporary snapshot LVs that are removed when cloning completes,
+	// while the target Volume still lives for a long time. If this was a
+	// clone reference, remove the owner reference here, but ignore errors
+	// in case k8s already removed it.  And if removing the clone owner
+	// reference leaves no ThinLVs, mark the ThinPoolLv for deletion.
 	_ = controllerutil.RemoveOwnerReference(owner, thinPoolLv, m.scheme)
+	if len(thinPoolLv.Spec.ThinLvs) == 0 && thinPoolLv.DeletionTimestamp == nil {
+		if err := m.client.Delete(ctx, thinPoolLv); err != nil {
+			return client.IgnoreNotFound(err)
+		}
+	}
 
 	// update thinPoolLv to clear Spec.ActiveOnNode, if necessary
 
@@ -312,32 +316,12 @@ func (m *ThinBlobManager) RemoveBlob(ctx context.Context, name string, owner cli
 }
 
 func (m *ThinBlobManager) ActivateBlobForCloneSource(ctx context.Context, name string, owner client.Object) error {
-	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
-
 	thinPoolLv, err := m.getThinPoolLv(ctx, m.poolName)
 	if err != nil {
 		return err
 	}
 
 	oldThinPoolLv := thinPoolLv.DeepCopy()
-
-	// record dependency on this ThinPoolLv so UpdateThinPoolLv() keeps it activated
-
-	labels := owner.GetLabels()
-	if labels == nil {
-		labels = make(map[string]string)
-	}
-	if _, exists := labels[config.CloneSourceLabel]; !exists {
-		log.Info("Adding cloneSource label to object", "name", owner.GetName())
-
-		// assume that source blob name is unique across namespace
-
-		labels[config.CloneSourceLabel] = name
-		owner.SetLabels(labels)
-		if err := m.client.Update(ctx, owner); err != nil {
-			return err
-		}
-	}
 
 	// add owner reference so controller reconcile is called when ActivateThinLv() watches ThinPoolLv
 	if err := controllerutil.SetOwnerReference(owner, thinPoolLv, m.scheme, controllerutil.WithBlockOwnerDeletion(true)); err != nil {
@@ -347,12 +331,17 @@ func (m *ThinBlobManager) ActivateBlobForCloneSource(ctx context.Context, name s
 	return thinpoollv.ActivateThinLv(ctx, m.client, oldThinPoolLv, thinPoolLv, name)
 }
 
-func (m *ThinBlobManager) ActivateBlobForCloneTarget(ctx context.Context, name string, dataSrcBlobMgr BlobManager) error {
+func (m *ThinBlobManager) ActivateBlobForCloneTarget(ctx context.Context, name string, dataSrcBlobMgr BlobManager) (string, error) {
 	log := log.FromContext(ctx).WithValues("blobName", name, "nodeName", config.LocalNodeName)
+
+	if dataSrcBlobMgr == nil {
+		// nothing to clone for empty source
+		return "", nil
+	}
 
 	thinPoolLv, err := m.getThinPoolLv(ctx, m.poolName)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	oldThinPoolLv := thinPoolLv.DeepCopy()
@@ -364,12 +353,12 @@ func (m *ThinBlobManager) ActivateBlobForCloneTarget(ctx context.Context, name s
 	dataSrcThinBlobMgr, ok := dataSrcBlobMgr.(*ThinBlobManager)
 	if !ok {
 		log.Info("Data source is not a thin-pool")
-		return errors.NewBadRequest("Data source is not a thin-pool!")
+		return "", errors.NewBadRequest("Data source is not a thin-pool!")
 	}
 
 	dataSrcThinPoolLv, err := m.getThinPoolLv(ctx, dataSrcThinBlobMgr.poolName)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if thinPoolLv.Spec.ActiveOnNode == dataSrcThinPoolLv.Status.ActiveOnNode {
@@ -379,7 +368,7 @@ func (m *ThinBlobManager) ActivateBlobForCloneTarget(ctx context.Context, name s
 	}
 	thinPoolLv.Spec.ActiveOnNode = dataSrcThinPoolLv.Status.ActiveOnNode
 
-	return thinpoollv.ActivateThinLv(ctx, m.client, oldThinPoolLv, thinPoolLv, name)
+	return thinPoolLv.Spec.ActiveOnNode, thinpoollv.ActivateThinLv(ctx, m.client, oldThinPoolLv, thinPoolLv, name)
 }
 
 func (m *ThinBlobManager) DeactivateBlobForCloneSource(ctx context.Context, name string, owner client.Object) error {
@@ -394,43 +383,6 @@ func (m *ThinBlobManager) DeactivateBlobForCloneSource(ctx context.Context, name
 	}
 
 	oldThinPoolLv := thinPoolLv.DeepCopy()
-
-	labels := owner.GetLabels()
-	if labels == nil {
-		labels = make(map[string]string)
-	}
-	if _, exists := labels[config.CloneSourceLabel]; exists {
-		delete(labels, config.CloneSourceLabel)
-		owner.SetLabels(labels)
-		if err := m.client.Update(ctx, owner); err != nil {
-			return err
-		}
-		log.Info("Deleted cloneSource label from owner", "name", owner.GetName(), "labels", labels)
-	} else {
-		log.Info("Owner does not have cloneSource label")
-	}
-
-	// are other Volumes still using this source blob?
-
-	volumes := &v1alpha1.VolumeList{}
-	err = m.client.List(ctx, volumes, client.MatchingLabels{config.CloneSourceLabel: name})
-	if err != nil {
-		return err
-	}
-	for i := range volumes.Items {
-		v := &volumes.Items[i]
-
-		// This is a hack because controller-runtime writes
-		// directly to the API server while reads go through a
-		// local cache. Although we removed the label from the
-		// owner above, we may still see it.
-		//
-		// https://github.com/kubernetes-sigs/controller-runtime/issues/245#issuecomment-451332903
-		if v.Name != owner.GetName() {
-			log.Info("Clone source still in use as a data source, not deactivating")
-			return nil
-		}
-	}
 
 	log.Info("Clone source no longer in use as a data source, deactivating")
 

@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
-ksan-supported-modes Thin
+ksan-supported-modes Linear Thin
 
-ksan-stage 'Creating volume...'
-ksan-create-rwo-volume test-pvc-1 64Mi
+ksan-stage 'Creating thin volume...'
+mode=thin ksan-create-rwo-volume test-pvc-1 64Mi
 ksan-fill-volume test-pvc-1 64
 
 ksan-stage 'Creating snapshot 1...'
@@ -14,7 +14,7 @@ ksan-delete-snapshot test-vs-1
 ksan-stage 'Recreating snapshot 1...'
 ksan-create-snapshot test-pvc-1 test-vs-1
 
-ksan-stage 'Creating volume 2 from snapshot of volume 1...'
+ksan-stage "Creating $mode volume 2 from snapshot of volume 1..."
 
 kubectl create -f - <<EOF
 apiVersion: v1
@@ -22,7 +22,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: test-pvc-2
 spec:
-  storageClassName: kubesan
+  storageClassName: kubesan-$mode
   volumeMode: Block
   dataSource:
     apiGroup: snapshot.storage.k8s.io
@@ -78,7 +78,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: test-pvc-3
 spec:
-  storageClassName: kubesan
+  storageClassName: kubesan-$mode
   volumeMode: Block
   dataSource:
     apiGroup: snapshot.storage.k8s.io

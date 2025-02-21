@@ -10,22 +10,30 @@ delete_thin_lv() {
     index=$2
 
     ksan-stage "Requesting deletion for thin LV \"$name\"..."
-    kubectl patch --namespace kubesan-system thinpoollv thinpoollv --type json --patch "
+    kubectl patch --namespace kubesan-system thinpoollv thinpoollv --type json --patch '
 [
-  {"op": "test", "path": "/spec/thinLvs/$index/name", "value": "$name"},
-  {"op": "replace", "path": "/spec/thinLvs/$index/state/name", "value": "Removed"}
+  {"op": "test", "path": "/spec/thinLvs/'$index'/name", "value": "'$name'"},
+  {"op": "replace", "path": "/spec/thinLvs/'$index'/state/name", "value": "Removed"}
 ]
-"
+'
     ksan-poll 1 30 "[[ -z \"\$(kubectl get --namespace kubesan-system -o=jsonpath='{.status.thinLvs[?(@.name==\"$name\")].name}' thinpoollv thinpoollv)\" ]]"
 
     ksan-stage "Removing thin LV \"$name\" from Spec..."
-    kubectl patch --namespace kubesan-system thinpoollv thinpoollv --type json --patch "
+    kubectl patch --namespace kubesan-system thinpoollv thinpoollv --type json --patch '
 [
-  {"op": "test", "path": "/spec/thinLvs/$index/name", "value": "$name"},
-  {"op": "remove", "path": "/spec/thinLvs/$index"}
+  {"op": "test", "path": "/spec/thinLvs/'$index'/name", "value": "'$name'"},
+  {"op": "remove", "path": "/spec/thinLvs/'$index'"}
 ]
-"
+'
 }
+
+# check_active_on_node <expected>
+# Check that the thinpoollv resource has the expected Status.ActiveOnNode.
+check_active_on_node() {
+    expected=$1
+    [[ $(kubectl get --namespace kubesan-system thinpoollv thinpoollv --output jsonpath='{.status.activeOnNode}' 2>&1) == $expected ]]
+}
+
 
 ksan-stage "Creating empty ThinPoolLv..."
 
@@ -81,7 +89,31 @@ spec:
 "
 ksan-poll 1 30 "[[ -n \"\$(kubectl get --namespace kubesan-system -o=jsonpath='{.status.thinLvs[?(@.name==\"snap\")]}' thinpoollv thinpoollv)\" ]]"
 
+check_active_on_node ""
+
+ksan-stage "Activating thin LV..."
+kubectl patch --namespace kubesan-system thinpoollv thinpoollv --type json --patch '
+[
+  {"op": "test", "path": "/spec/thinLvs/0/name", "value": "thinlv"},
+  {"op": "replace", "path": "/spec/thinLvs/0/state/name", "value": "Active"}
+]
+'
+
+ksan-poll 1 30 "check_active_on_node '$(__ksan-get-node-name 0)'"
+
+ksan-stage "Switching the active node for the pool..."
+kubectl patch --namespace kubesan-system thinpoollv thinpoollv --type json --patch '
+[
+  {"op": "replace", "path": "/spec/activeOnNode", "value": "'$(__ksan-get-node-name 1)'"}
+]
+'
+
+ksan-poll 1 30 "check_active_on_node '$(__ksan-get-node-name 1)'"
+
+# Cleanup; ksan-stage in delete_thin_lv
 delete_thin_lv thinlv 0
+check_active_on_node ""
+
 delete_thin_lv snap 0
 
 ksan-stage "Deleting ThinPoolLv..."

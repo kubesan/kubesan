@@ -35,9 +35,15 @@ const (
 )
 
 var (
-	Domain           = v1alpha1.Group
-	Finalizer        = Domain + "/finalizer"
-	CloneSourceLabel = Domain + "/cloneSource"
+	Domain              = v1alpha1.Group
+	Finalizer           = Domain + "/finalizer"
+	CloneSourceLabel    = Domain + "/cloneSourcePool"
+	PopulationNodeLabel = Domain + "/populationNode"
+
+	CommonLabels = map[string]string{
+		AppNameLabel:    "kubesan",
+		AppVersionLabel: Version,
+	}
 
 	LocalNodeName = os.Getenv("NODE_NAME")
 	PodName       = os.Getenv("POD_NAME")

@@ -28,7 +28,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: test-pvc-2
 spec:
-  storageClassName: kubesan
+  storageClassName: kubesan-$mode
   accessModes:
     - ReadWriteOnce
   resources:

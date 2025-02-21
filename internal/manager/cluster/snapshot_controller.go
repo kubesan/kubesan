@@ -5,9 +5,11 @@ package cluster
 import (
 	"context"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -73,6 +75,18 @@ func (r *SnapshotReconciler) reconcileNotDeleting(ctx context.Context, blobMgr b
 
 	if !meta.IsStatusConditionTrue(snapshot.Status.Conditions, v1alpha1.SnapshotConditionAvailable) {
 		log := log.FromContext(ctx).WithValues("nodeName", config.LocalNodeName)
+
+		// Ensure the source volume is available.
+		volume := &v1alpha1.Volume{}
+		if err := r.Get(ctx, types.NamespacedName{Name: snapshot.Spec.SourceVolume, Namespace: config.Namespace}, volume); err != nil {
+			return err
+		}
+		if volume.DeletionTimestamp != nil {
+			return errors.NewBadRequest("source not found")
+		}
+		if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.SnapshotConditionAvailable) {
+			return util.NewWatchPending("waiting for volume to become available")
+		}
 
 		err := blobMgr.SnapshotBlob(ctx, snapshot.Name, snapshot.Spec.Binding, snapshot.Spec.SourceVolume, snapshot)
 		if err != nil {

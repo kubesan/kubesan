@@ -80,10 +80,12 @@ while (( $# > 0 )); do
     shift
 done
 
-if [[ "$mode" != Thin && "$mode" != Linear ]]; then
-    echo "Invalid mode \"$mode\", must be \"Thin\" or \"Linear\""
-    exit 1
-fi
+case $mode in
+    [tT]hin) export mode=thin ;;
+    [lL]inear) export mode=linear ;;
+    *) echo "Invalid mode \"$mode\", must be \"Thin\" or \"Linear\""
+       exit 1;;
+esac
 
 if [[ -f "${script_dir}/deployers/${deploy_tool}_iface.sh" ]]; then
     source "${script_dir}/deployers/${deploy_tool}_iface.sh"
@@ -347,7 +349,7 @@ EOF
 EOF
             fi
             kubectl apply -k ${temp_dir}
-            sed -E "s/@@MODE@@/$mode/g" "${script_dir}/t-data/storage-class.yaml" | kubectl create -f -
+            kubectl apply -f "${script_dir}/t-data/storage-class.yaml"
         fi
 
         # If pods aren't healthy quickly, dump some logs before failing to

@@ -40,11 +40,17 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 	}
 
 	switch {
+	case volume.DeletionTimestamp != nil:
+		return nil, status.Error(codes.NotFound, "volume is marked for deletion")
+
 	case volume.Spec.Mode != v1alpha1.VolumeModeThin:
 		return nil, status.Error(codes.Unimplemented, "snapshots are only supported on thin volumes")
 
 	case volume.Spec.Type.Filesystem != nil:
 		return nil, status.Error(codes.Unimplemented, "filesystem snapshots not implemented yet")
+
+	case !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable):
+		return nil, status.Error(codes.NotFound, "source volume is not ready yet")
 
 	case req.Name == "":
 		return nil, status.Error(codes.InvalidArgument, "must specify snapshot name")
@@ -82,10 +88,7 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: config.Namespace,
-			Labels: map[string]string{
-				config.AppNameLabel:    "kubesan",
-				config.AppVersionLabel: config.Version,
-			},
+			Labels:    config.CommonLabels,
 		},
 		Spec: v1alpha1.SnapshotSpec{
 			VgName:       volume.Spec.VgName,
@@ -99,8 +102,12 @@ func (s *ControllerServer) CreateSnapshot(ctx context.Context, req *csi.CreateSn
 	if errors.IsAlreadyExists(err) {
 		// Check that the new request is idempotent to the existing snapshot
 		err = s.client.Get(ctx, types.NamespacedName{Name: snapshot.Name, Namespace: config.Namespace}, snapshot)
-		if err == nil && req.SourceVolumeId != snapshot.Spec.SourceVolume {
-			err = status.Error(codes.AlreadyExists, "snapshot already exists with different source")
+		if err == nil {
+			if snapshot.DeletionTimestamp != nil {
+				err = status.Error(codes.AlreadyExists, "snapshot deletion is already in progress")
+			} else if req.SourceVolumeId != snapshot.Spec.SourceVolume {
+				err = status.Error(codes.AlreadyExists, "snapshot already exists with different source")
+			}
 
 		}
 	}
