@@ -62,11 +62,43 @@ $ kubectl apply -k "https://github.com/kubernetes-csi/external-snapshotter/deplo
 ## LVM configuration
 
 Before installing KubeSAN, each node in the cluster must have LVM and
-sanlock configured.  Use the following settings in /etc/lvm/lvm.conf:
+sanlock configured.  KubeSAN has been tested with lvm 2.03.25 and
+2.03.28; older versions are not guaranteed to work.  For best
+performance, use the following settings in /etc/lvm/lvm.conf:
 
 ```
+config {
+  # Only available in 2.03.28 or later
+  # Optional, but allows for faster thin volume processing
+  validate_metadata = "none"
+  ...
+}
+devices {
+  # Recommended, to better interact with shared storage
+  multipath_component_detection = 0
+  md_component_detection = 0
+  ...
+}
+backup {
+  # Optional, but avoids filling the host disk
+  backup = 0
+  archive = 0
+  ...
+}
 global {
+  # Mandatory for a shared VG
 	use_lvmlockd = 1
+  # Optional, but speeds up use of thin volumes
+  thin_check_options = [ "-q", "--clear-needs-check-flag", "--skip-mappings" ]
+  # Recommended in 2.03.28 or later to support a larger number of volumes
+  # In 2.03.25, this value cannot exceed 32768
+  io_memory_size = 65536
+  ...
+}
+activation {
+  # Recommended, to support a larger number of volumes
+  reserved_memory = 0
+  ...
 }
 ```
 

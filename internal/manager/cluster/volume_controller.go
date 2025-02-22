@@ -261,7 +261,15 @@ func (r *VolumeReconciler) reconcilePrepareForResize(ctx context.Context, blobMg
 				Reason:  "Resizing",
 				Message: "volume is unavailable while resizing",
 			}
-			if meta.SetStatusCondition(&volume.Status.Conditions, condition1) || meta.SetStatusCondition(&volume.Status.Conditions, condition2) {
+			condition3 := metav1.Condition{
+				Type:    v1alpha1.VolumeConditionAbnormal,
+				Status:  metav1.ConditionTrue,
+				Reason:  "Resizing",
+				Message: "volume unavailable during expansion",
+			}
+			if meta.SetStatusCondition(&volume.Status.Conditions, condition1) ||
+				meta.SetStatusCondition(&volume.Status.Conditions, condition2) ||
+				meta.SetStatusCondition(&volume.Status.Conditions, condition3) {
 				needsUpdate = true
 			}
 		}
@@ -343,24 +351,16 @@ func (r *VolumeReconciler) reconcileNotDeleting(ctx context.Context, blobMgr blo
 		log.Info("activateDataSource succeeded")
 
 		// Shortcut when data population is not required
-		var condition metav1.Condition
 		if volume.Spec.Contents.ContentsType == v1alpha1.VolumeContentsTypeEmpty && !blobMgr.ExpansionMustBeOffline() {
-			condition = metav1.Condition{
+			condition := metav1.Condition{
 				Type:    v1alpha1.VolumeConditionDataSourceCompleted,
 				Status:  metav1.ConditionTrue,
 				Reason:  "Completed",
 				Message: "population from data source completed",
 			}
-		} else if !meta.IsStatusConditionTrue(volume.Status.Conditions, v1alpha1.VolumeConditionAvailable) {
-			condition = metav1.Condition{
-				Type:    v1alpha1.VolumeConditionAbnormal,
-				Status:  metav1.ConditionTrue,
-				Reason:  "Populating",
-				Message: "volume unavailable during initial population or expansion",
+			if meta.SetStatusCondition(&volume.Status.Conditions, condition) {
+				needsUpdate = true
 			}
-		}
-		if meta.SetStatusCondition(&volume.Status.Conditions, condition) {
-			needsUpdate = true
 		}
 	}
 
