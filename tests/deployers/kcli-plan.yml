@@ -1,0 +1,72 @@
+parameters:
+  info: kubesan kcli test plan
+  cluster: kubesan-test
+  ctlplanes: 1
+  workers: 1
+  image: fedora40
+
+# IMPORTANT: the multiline block is transformed into a single
+# line. Do not skip the ; at the end of the line or bad things
+# happen. Also, multiline blocks in Yaml do not support comments.
+#
+# Please be aware that the block is subject to multiple transformations.
+# First by kcli parser and later by cloud-init. This format was
+# the only one I could get to work with escaping and multiline.
+#
+# io_memory_size = 65536 is value intentionally higher than docs,
+# for the sake of proving we do not run out of memory
+kubesan-test:
+  type: kube
+  ctlplanes: {{ ctlplanes }}
+  workers: {{ workers }}
+  image: {{ image }}
+  domain: ''
+  registry: true
+  cmds:
+    - yum -y install podman lvm2-lockd sanlock
+    - sed -i "s|# use_watchdog = 1|use_watchdog = 0|" /etc/sanlock/sanlock.conf
+    - >-
+      sed -i "
+      s|# validate_metadata = \"full\"|validate_metadata = \"none\"|;
+      s|# multipath_component_detection = 1|multipath_component_detection = 0|;
+      s|# md_component_detection = 1|md_component_detection = 0|;
+      s|# backup = 1|backup = 0|;
+      s|# archive = 1|archive = 0|;
+      s|# use_lvmlockd = 0|use_lvmlockd = 1|;
+      s|# thin_check_options = \[.*\]|thin_check_options = \[ \"-q\", \"--clear-needs-check-flag\", \"--skip-mappings\" \]|;
+      s|# io_memory_size = 8192|io_memory_size = 65536|;
+      s|# reserved_memory = 8192|reserved_memory = 0|
+      " /etc/lvm/lvm.conf
+{%for node in cluster|kubenodes(ctlplanes, workers) %}
+    - if [ "$(hostname)" == "{{ node }}" ]; then sed -i "s|# host_id = 0|host_id = {{ loop.index }}|" /etc/lvm/lvmlocal.conf; fi
+{%endfor%}
+    - systemctl enable --now podman lvmlockd sanlock
+
+# TODO: paramaterize shared storage
+kubesan-test-shared-1.img:
+  type: disk
+  thin: false
+  size: 5
+  pool: default
+  vms: {{ cluster|kubenodes(ctlplanes, workers) }}
+
+kubesan-test-shared-2.img:
+  type: disk
+  thin: false
+  size: 5
+  pool: default
+  vms: {{ cluster|kubenodes(ctlplanes, workers) }}
+
+postdeploy:
+  type: workflow
+  target: root@{{ cluster|kubenodes(ctlplanes, workers)|first }}
+  scripts:
+  - kcli-post-ctl0.sh
+
+{% for vm in cluster|kubenodes(ctlplanes, workers) %}
+postdeploy-{{ vm }}:
+  type: workflow
+  target: root@{{ vm }}
+  scripts:
+  - kcli-post-all.sh
+{% endfor %}

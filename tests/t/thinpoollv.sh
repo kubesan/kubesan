@@ -45,7 +45,7 @@ metadata:
   name: thinpoollv
   namespace: kubesan-system
 spec:
-  vgName: kubesan-vg
+  vgName: test-vg1
   sizeBytes: 67108864
 EOF
 

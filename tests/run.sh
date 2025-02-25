@@ -265,6 +265,7 @@ __run() {
     for node in $(kubectl get node -l node-role.kubernetes.io/worker --output=name); do
         NODES+=( "${node#node/}" )
     done
+    export NODE_INDICES=( "${!NODES[@]}" )
 
     # set current_cluster registry required to install kubesan and test image
     __get_${deploy_tool}_registry "${current_cluster}"
@@ -276,11 +277,6 @@ __run() {
         # copy locally built image to remote registry
         __${deploy_tool}_image_upload "${current_cluster}" "${image}"
     done
-
-    # this one probably need to be conditional if already done
-    if (( requires_nbd_storage )); then
-        __setup_nbd_storage "${current_cluster}"
-    fi
 
     set +o errexit
     (
