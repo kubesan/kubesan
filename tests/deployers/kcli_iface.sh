@@ -8,10 +8,7 @@ requires_image_pull_policy_always=1
 requires_nbd_storage=1
 requires_snapshotter=1
 support_sandbox=1
-support_multiple_clusters=0
 support_snapshots=1
-support_set_kubectl_context=0
-
 
 __kcli() {
     kcli "$@"
@@ -220,21 +217,6 @@ __get_kcli_registry() {
     ksanregistry="192.168.122.253:5000"
 }
 export -f __get_kcli_registry
-
-# Usage: __create_kcli_cluster_async <profile> [<extra_kcli_opts...>]
-# currently it´s a no-op. kcli does not support multiple clusters yet
-# and this function is not called by the run.sh.
-__create_kcli_cluster_async() {
-    return
-}
-export -f __create_kcli_cluster_async
-
-# currently it´s a no-op. kcli does not support multiple clusters yet
-# and this function is not called by the run.sh.
-__wait_until_background_kcli_cluster_is_ready() {
-    return
-}
-export -f __wait_until_background_kcli_cluster_is_ready
 
 # Usage: ksan-kcli-ssh-into-node <node_name>|<node_index> [<command...>]
 ksan-kcli-ssh-into-node() {

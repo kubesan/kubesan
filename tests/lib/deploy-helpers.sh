@@ -3,84 +3,22 @@
 
 cluster_base_name=$( printf 'kubesan-test-%dn' "${num_nodes}" )
 
-__next_cluster() {
-    case "$1" in
-    kubesan-test-*n-a)
-        echo "${cluster_base_name}-b"
-        ;;
-    kubesan-test-*n-b)
-        echo "${cluster_base_name}-a"
-        ;;
-    *)
-        exit 1
-        ;;
-    esac
-}
-
-maintain_two_clusters=0
-if (( support_multiple_clusters )); then
-    maintain_two_clusters=$(( num_nodes <= 2 ))
-fi
-
 __get_a_current_cluster() {
     unset KUBECONFIG
 
-    if (( maintain_two_clusters )); then
+    current_cluster="${cluster_base_name}"
 
-        if ! __${deploy_tool}_cluster_exists "${cluster_base_name}-a" &&
-            ! __${deploy_tool}_cluster_exists "${cluster_base_name}-b"; then
+    if ! __${deploy_tool}_cluster_exists "${current_cluster}"; then
 
-            current_cluster="${cluster_base_name}-a"
-
-            background_cluster="$( __next_cluster "${current_cluster}" )"
-            __create_${deploy_tool}_cluster_async "${background_cluster}"
-
-            __log_cyan "Creating and using ${deploy_tool} cluster '%s'..." "${current_cluster}"
-            __start_${deploy_tool}_cluster "${current_cluster}"
-
-        else
-
-            if [[ -n "${current_cluster:-}" && -n "${!:-}" ]]; then
-                if kill -0 "$!" &>/dev/null; then
-                    __log_cyan "Waiting for ${deploy_tool} cluster '%s' to be ready..." "${background_cluster}"
-                fi
-                wait || true
-                current_cluster="${background_cluster}"
-            elif __${deploy_tool}_cluster_exists "${cluster_base_name}-a"; then
-                current_cluster="${cluster_base_name}-a"
-            else
-                current_cluster="${cluster_base_name}-b"
-            fi
-
-            background_cluster="$( __next_cluster "${current_cluster}" )"
-
-            if ! __${deploy_tool}_cluster_exists "${background_cluster}"; then
-                __create_${deploy_tool}_cluster_async "${background_cluster}"
-            fi
-
-            __log_cyan "Using existing ${deploy_tool} cluster '%s'..." "${current_cluster}"
-            if ! __is_${deploy_tool}_cluster_running "${current_cluster}"; then
-                __restart_${deploy_tool}_cluster "${current_cluster}"
-            fi
-        fi
+        __log_cyan "Creating and using ${deploy_tool} cluster '%s'..." "${current_cluster}"
+        __start_${deploy_tool}_cluster "${current_cluster}"
 
     else
 
-        current_cluster="${cluster_base_name}"
-
-        if ! __${deploy_tool}_cluster_exists "${current_cluster}"; then
-
-            __log_cyan "Creating and using ${deploy_tool} cluster '%s'..." "${current_cluster}"
-            __start_${deploy_tool}_cluster "${current_cluster}"
-
-        else
-
-            __log_cyan "Using existing ${deploy_tool} cluster '%s'..." "${current_cluster}"
-            if ! __is_${deploy_tool}_cluster_running "${current_cluster}"; then
-                __restart_${deploy_tool}_cluster "${current_cluster}"
-            fi
+        __log_cyan "Using existing ${deploy_tool} cluster '%s'..." "${current_cluster}"
+        if ! __is_${deploy_tool}_cluster_running "${current_cluster}"; then
+            __restart_${deploy_tool}_cluster "${current_cluster}"
         fi
-
     fi
 
     export current_cluster
@@ -95,7 +33,6 @@ __get_a_current_cluster() {
         trap '{
            __delete_${deploy_tool}_cluster "${current_cluster}"
            rm -fr "${temp_dir}"
-           __wait_until_background_${deploy_tool}_cluster_is_ready
            }' EXIT
     else
         trap '{
@@ -104,19 +41,6 @@ __get_a_current_cluster() {
     fi
 }
 export -f __get_a_current_cluster
-
-__clean_background_clusters() {
-    trap 'rm -fr "${temp_dir}"' EXIT
-    __wait_until_background_${deploy_tool}_cluster_is_ready
-
-    if (( "${creating_cluster_in_background:-0}" == 1 )); then
-        minikube stop \
-            --profile="${background_cluster}" \
-            --keep-context-active \
-            --schedule=30m
-    fi
-}
-export -f __clean_background_clusters
 
 __setup_nbd_storage() {
 

@@ -24,7 +24,6 @@ fail_fast=0
 mode=Thin
 num_nodes=2
 repeat=1
-set_kubectl_context=0
 pause_on_failure=0
 pause_on_stage=0
 use_cache=0
@@ -47,9 +46,6 @@ while (( $# > 0 )); do
         --repeat)
             shift
             repeat=$1
-            ;;
-        --set-kubectl-context)
-            set_kubectl_context=1
             ;;
         --pause-on-failure)
             pause_on_failure=1
@@ -122,21 +118,12 @@ Options:
    --mode Thin|Linear      Select LVM LV type via StorageClass \"mode\" parameter (default: Thin).
    --nodes <n>             Number of nodes in the cluster (default: 2).
    --repeat <n>            Run each test n times (default: 1).
-   --set-kubectl-context   Update the current user's kubectl context to point at the cluster (minikube only).
    --pause-on-failure      Launch an interactive shell after a test fails.
    --pause-on-stage        Launch an interactive shell before each stage in a test.
-   --use <x>               Backend provider for k8s/openshift deployment (kcli|minikube|..., default: kcli).
+   --use <x>               Backend provider for k8s/openshift deployment (kcli|..., default: kcli).
    --use-cache             Use local cache when available (only supported for kcli).
    --refresh-cache         Refresh/create local cache when running tests directly (only supported for kcli).
    --external-registry     Use a dedicated registry to deploy kcli clusters (only supported for kcli).
-
-NOTE: not all options are supported for kcli or minikube.
-
-When using minikube and 2 nodes, this script maintains two clusters, using one to
-run the current test while preparing the other in the background, so that the
-next test has a cluster ready more quickly. One of the clusters is left running
-after this script exits, but will stop itself if this script isn't run again
-for 30 minutes.
 
 "
     exit 2
@@ -266,13 +253,6 @@ __run() {
         __get_a_current_cluster
     else
         __get_${deploy_tool}_current_cluster
-    fi
-
-    # minikube specifically is able to update and manage kubeconfig
-    # for the invoking user and set context.
-    if (( support_set_kubectl_context )) && \
-       (( set_kubectl_context )); then
-        kubectl config use-context "${current_cluster}"
     fi
 
     export NODES=()
@@ -441,7 +421,6 @@ EOF
         else
             __log_cyan "Deleting ${deploy_tool} cluster '%s'..." "${current_cluster}"
             __delete_${deploy_tool}_cluster "${current_cluster}"
-            __clean_background_clusters
         fi
     fi
 }
@@ -505,10 +484,6 @@ else
 
     __big_log "${color}" '%d succeeded, %d failed, %d skipped, %d canceled' \
         "${num_succeeded}" "${num_failed}" "${num_skipped}" "${num_canceled}"
-fi
-
-if (( requires_local_deploy )); then
-    __clean_background_clusters
 fi
 
 (( sandbox || ( num_succeeded + num_skipped ) == ${#tests[@]} ))
