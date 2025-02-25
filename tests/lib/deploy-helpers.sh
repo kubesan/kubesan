@@ -190,7 +190,9 @@ __setup_nbd_storage() {
                  s|# archive = 1|archive = 0|
                  s|# use_lvmlockd = 0|use_lvmlockd = 1|
                  s|# thin_check_options = \\[.*\\]|thin_check_options = [ \\\"-q\\\", \\\"--clear-needs-check-flag\\\", \\\"--skip-mappings\\\" \\]|
-                 s|# io_memory_size = 8192|io_memory_size = 32768|
+                 # This value intentionally higher than docs, for the
+                 # sake of proving we do not run out of memory
+                 s|# io_memory_size = 8192|io_memory_size = 65536|
                  s|# reserved_memory = 8192|reserved_memory = 0|
             ' /etc/lvm/lvm.conf
             sudo sed -i 's|# host_id = 0|host_id = $((node_index + 1))|' /etc/lvm/lvmlocal.conf

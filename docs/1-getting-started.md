@@ -64,12 +64,12 @@ $ kubectl apply -k "https://github.com/kubernetes-csi/external-snapshotter/deplo
 Before installing KubeSAN, each node in the cluster must have LVM and
 sanlock configured.  KubeSAN has been tested with lvm 2.03.25 and
 2.03.28; older versions are not guaranteed to work.  For best
-performance, use the following settings in /etc/lvm/lvm.conf:
+performance, use the following non-default settings in /etc/lvm/lvm.conf:
 
 ```
 config {
   # Only available in 2.03.28 or later
-  # Optional, but allows for faster thin volume processing
+  # Optional, but allows for faster thin volume processing than default "full"
   validate_metadata = "none"
   ...
 }
@@ -87,12 +87,17 @@ backup {
 }
 global {
   # Mandatory for a shared VG
-	use_lvmlockd = 1
-  # Optional, but speeds up use of thin volumes
+  use_lvmlockd = 1
+  # Only available in 2.03.28 or later; no-op for SAN with 512-byte sectors
+  # Optional, but allows for faster sanlock processing by limiting to only
+  # 500 hosts instead of 2000 if the SAN uses 4k native sectors
+  sanlock_align_size = 2
+  # Optional; only -q and --clear-needs-check-flag are default, but adding
+  # --skip-mappings speeds up use of thin volumes
   thin_check_options = [ "-q", "--clear-needs-check-flag", "--skip-mappings" ]
-  # Recommended in 2.03.28 or later to support a larger number of volumes
-  # In 2.03.25, this value cannot exceed 32768
-  io_memory_size = 65536
+  # Recommended to support a larger number of volumes (vgcreate should provide
+  # a --metadatasize of at least twice this)
+  io_memory_size = 32768
   ...
 }
 activation {
@@ -133,10 +138,12 @@ as a shared LVM Volume Group accessible via one or more block devices
 shared to each node of the cluster, such as atop a LUN from a SAN.
 This shared VG and lockspace can be created on any node with access to
 the LUN, although you may find it easiest to do it on the control-plane
-node; here is how to create a VG named `my-vg`:
+node; here is how to create a VG named `my-vg` with sufficient room to
+carve out well over 10,000 simultaneous PersistentVolumeClaims and
+VolumeSnapshots:
 
 ```console
-$ sudo vgcreate --devicesfile my-vg --shared my-vg /dev/my-san-lun
+$ sudo vgcreate --devicesfile my-vg --metadatasize 64M --shared my-vg /dev/my-san-lun
 ```
 
 KubeSAN assumes that it will be the sole owner of the shared volume
