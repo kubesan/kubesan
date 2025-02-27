@@ -3,6 +3,10 @@
 # Usage: ksan-supported-modes [<mode1> ...]
 ksan-supported-modes() {
     for allowed in "$@"; do
+        # test does not require mode
+        if [[ "${allowed,,}" == "any" ]]; then
+            return
+        fi
         if [[ "$mode" == "${allowed,,}" ]]; then
             return
         fi

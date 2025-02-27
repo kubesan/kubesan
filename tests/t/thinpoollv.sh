@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
-# This test does not use ksan-supported-modes because it directly tests the
-# ThinPoolLv CRD without using Volumes or StorageClass at all.
+# This test directly tests the ThinPoolLv CRD without using Volumes or
+# StorageClass at all.
+ksan-supported-modes Any
 
 # delete_thin_lv <name> <index>
 # Deletes a thin LV with a given name and its index in the ThinLvs[] array.
