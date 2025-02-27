@@ -462,7 +462,14 @@ else
         __big_log 33 'Running test %s (%d of %d)...' \
             "${test_name}" "$(( test_i+1 ))" "${#tests[@]}"
 
-        __run
+        # hack to skip tests that don´t support current mode.
+        testmodes="$(grep ^ksan-supported-modes ${test_resolved})"
+        $testmodes
+        exit_code=$?
+
+        if (( exit_code == 0 )); then
+            __run
+        fi
 
         if [[ -e "${temp_dir}/retry" ]]; then
             canceled=0
