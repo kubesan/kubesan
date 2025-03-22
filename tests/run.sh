@@ -195,8 +195,6 @@ for f in ${script_dir}/lib/*.sh; do
     source "$f"
 done
 
-__build_images
-
 # this is only really required by CI to separate
 # creation time vs testing time. does not support
 # multiple clusters yet and pretty much works only
@@ -216,6 +214,8 @@ if (( use_cache )); then
         fi
     fi
 fi
+
+__build_images
 
 # create temporary directory
 
