@@ -77,13 +77,13 @@ ksan-stage 'Ensuring that the first pod is still writing to the volume...'
 ensure_pod_is_writing 0
 # CAUTION: this code is fragile - it assumes knowledge of KubeSAN internals.
 # This dm device will only exist if the LV is active on the node.
-ksan-poll 1 300 "kubectl exec test-pod-0 -- dmsetup status | grep -q 'kubesan--vg-pvc--.*:'"
+ksan-poll 1 300 "kubectl exec test-pod-0 -- dmsetup status | grep -q 'test--vg1-pvc--.*:'"
 
 ksan-stage 'Deleting the first pod...'
 kubectl delete pod test-pod-0 --timeout=30s
 
 ksan-stage 'Waiting until the blob pool has migrated...'
-ksan-poll 1 300 "kubectl exec test-pod-1 -- dmsetup status | grep -q 'kubesan--vg-pvc--.*:'"
+ksan-poll 1 300 "kubectl exec test-pod-1 -- dmsetup status | grep -q 'test--vg1-pvc--.*:'"
 
 ksan-stage 'Ensuring that the second pod is still writing to the volume...'
 ensure_pod_is_writing 1

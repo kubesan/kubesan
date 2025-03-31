@@ -5,13 +5,8 @@
 requires_local_deploy=1
 requires_external_tool=1
 requires_image_pull_policy_always=1
-requires_nbd_storage=1
-requires_snapshotter=1
 support_sandbox=1
-support_multiple_clusters=0
 support_snapshots=1
-support_set_kubectl_context=0
-
 
 __kcli() {
     kcli "$@"
@@ -115,10 +110,11 @@ __start_kcli_cluster() {
     local controllers=1
     local workers=1
     local extregparam=""
+    local defaultimg=fedora40
 
     if ! __kcli_cluster_exists "$1"; then
         if ! __kcli list images -o name |grep -q "/fedora40$"; then
-            __kcli download image fedora40
+            __kcli download image $defaultimg
         fi
 
         if [[ "${num_nodes}" -ge "5" ]]; then
@@ -132,38 +128,27 @@ __start_kcli_cluster() {
              extregparam="--param disconnected_url=$extregistry"
         fi
 
-        __kcli create cluster generic \
+        __kcli create plan \
+                --inputfile "$(dirname $0)/deployers/kcli-plan.yml" \
                 --threaded \
-                --param image=fedora40 \
+                --param image=$defaultimg \
                 --param ctlplanes=$controllers \
                 --param workers=$workers \
-                --param domain='' \
                 $extregparam \
-                --param registry=true \
-                --param cmds=['yum -y install podman lvm2-lockd sanlock && systemctl enable --now podman lvmlockd sanlock'] \
                 "$1"
+
         created=1
     else
         if (( use_cache )); then
             __log_cyan "restore from snapshot"
             __kcli revert plan-snapshot --plan "$1" "$1"-snap
-            requires_snapshotter=0 # The snapshotter was stored pre-snapshot
+            __kcli create plan-snapshot --plan "$1" "$1"-snap
         fi
     fi
 
     __kcli start plan "$1"
 
     __wait_kcli_cluster "$1"
-
-    if [[ "$created" == "1" ]] && [[ "$workers" -lt "2" ]]; then
-        __get_kcli_kubeconf "$1"
-
-        for node in $(kubectl get nodes -l node-role.kubernetes.io/control-plane --output=jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do
-            kubectl taint node $node node-role.kubernetes.io/control-plane-
-        done
-
-        kubectl label nodes --all node-role.kubernetes.io/worker=
-    fi
 }
 export -f __start_kcli_cluster
 
@@ -182,7 +167,10 @@ export -f __restart_kcli_cluster
 
 # Usage: __delete_kcli_cluster <profile>
 __delete_kcli_cluster() {
-    __kcli delete -y cluster "$1"
+    if  __kcli_cluster_exists "$1"; then
+        __kcli start plan "$1"
+        __kcli delete --yes plan "$1"
+    fi
 }
 export -f __delete_kcli_cluster
 
@@ -207,34 +195,11 @@ __kcli_image_upload() {
 }
 export -f __kcli_image_upload
 
-# Usage: __kcli_cp_bashrc <profile> <node>
-__kcli_cp_bashrc() {
-    __kcli scp \
-        "${script_dir}/deployers/kcli-node-bash-profile.sh" \
-        "${2}:/home/fedora/.bashrc"
-}
-export -f __kcli_cp_bashrc
-
 # Usage: __get_kcli_registry <profile>
 __get_kcli_registry() {
     ksanregistry="192.168.122.253:5000"
 }
 export -f __get_kcli_registry
-
-# Usage: __create_kcli_cluster_async <profile> [<extra_kcli_opts...>]
-# currently it´s a no-op. kcli does not support multiple clusters yet
-# and this function is not called by the run.sh.
-__create_kcli_cluster_async() {
-    return
-}
-export -f __create_kcli_cluster_async
-
-# currently it´s a no-op. kcli does not support multiple clusters yet
-# and this function is not called by the run.sh.
-__wait_until_background_kcli_cluster_is_ready() {
-    return
-}
-export -f __wait_until_background_kcli_cluster_is_ready
 
 # Usage: ksan-kcli-ssh-into-node <node_name>|<node_index> [<command...>]
 ksan-kcli-ssh-into-node() {

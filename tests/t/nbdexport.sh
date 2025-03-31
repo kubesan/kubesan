@@ -19,7 +19,7 @@ spec:
   # The CRD needs a block device in /dev. Cheat and reuse the second VG
   # that this test is otherwise not using; however, this is unsafe to
   # do in a production environment.
-  path: "/dev/kubesan-drive-1"
+  path: "/dev/vdc"
   host: $(__ksan-get-node-name 0)
   sizeBytes: $((1024*1024))
 EOF
@@ -51,7 +51,7 @@ kubectl create -f - <<EOF
           command:
             - ./nbdexport-helper.sh
             - "$(kubectl -n kubesan-system get nbdexports export -o jsonpath={.status.uri})"
-            - /dev/kubesan-drive-1
+            - /dev/vdc
           volumeMounts:
             - name: dev
               mountPath: /dev

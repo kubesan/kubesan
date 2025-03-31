@@ -6,7 +6,7 @@ metadata:
   name: kubesan-linear
 provisioner: kubesan.gitlab.io
 parameters:
-  lvmVolumeGroup: kubesan-vg
+  lvmVolumeGroup: test-vg1
   mode: Linear
 allowVolumeExpansion: true
 ---
@@ -16,6 +16,6 @@ metadata:
   name: kubesan-thin
 provisioner: kubesan.gitlab.io
 parameters:
-  lvmVolumeGroup: kubesan-vg
+  lvmVolumeGroup: test-vg1
   mode: Thin
 allowVolumeExpansion: true

@@ -2,10 +2,6 @@
 
 ksan-supported-modes Linear Thin
 
-ksan-stage 'Creating second shared VG'
-
-__create_ksan_shared_vg second-vg /dev/kubesan-drive-1
-
 ksan-stage 'Creating second StorageClass'
 
 kubectl create -f - <<EOF
@@ -17,7 +13,7 @@ metadata:
     storageclass.kubernetes.io/is-default-class: "false"
 provisioner: kubesan.gitlab.io
 parameters:
-  lvmVolumeGroup: second-vg
+  lvmVolumeGroup: test-vg2
   mode: ${mode^}
 EOF
 
