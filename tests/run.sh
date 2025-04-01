@@ -330,7 +330,17 @@ EOF
 
         # If pods aren't healthy quickly, dump some logs before failing to
         # aid in debugging CI
-        __log_cyan "Waiting for KubeSAN pods to be running..."
+        __log_cyan "Waiting for KubeSAN pods to be created..."
+        if ksan-poll 1 240 '[[ -n "$(kubectl get --namespace kubesan-system pod --no-headers --ignore-not-found)" ]]'; then
+            :
+        else
+            __log_red "KubeSAN pods not created!"
+            if (( ! sandbox )); then
+                exit 1
+            fi
+        fi
+
+        __log_cyan "Waiting for KubeSAN pods to be healthy..."
         if ksan-poll 1 240 '[[ -z "$(kubectl get --namespace kubesan-system pod --field-selector status.phase!=Running --no-headers --ignore-not-found)" ]]'; then
             :
         else
