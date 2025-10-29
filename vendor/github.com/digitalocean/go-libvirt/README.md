@@ -19,6 +19,9 @@ go-libvirt.
 
 [Pull requests are welcome](https://github.com/digitalocean/go-libvirt/blob/master/CONTRIBUTING.md)!
 
+Feel free to join us in [`#go-libvirt` on libera chat](https://web.libera.chat/)
+if you'd like to discuss the project.
+
 Running the Code Generators
 ---------------------------
 
@@ -126,33 +129,26 @@ package main
 import (
 	"fmt"
 	"log"
-	"net"
-	"time"
+	"net/url"
 
 	"github.com/digitalocean/go-libvirt"
 )
 
 func main() {
-	// This dials libvirt on the local machine, but you can substitute the first
-	// two parameters with "tcp", "<ip address>:<port>" to connect to libvirt on
-	// a remote machine.
-	c, err := net.DialTimeout("unix", "/var/run/libvirt/libvirt-sock", 2*time.Second)
+	uri, _ := url.Parse(string(libvirt.QEMUSystem))
+	l, err := libvirt.ConnectToURI(uri)
 	if err != nil {
-		log.Fatalf("failed to dial libvirt: %v", err)
-	}
-
-	l := libvirt.New(c)
-	if err := l.Connect(); err != nil {
 		log.Fatalf("failed to connect: %v", err)
 	}
 
-	v, err := l.Version()
+	v, err := l.ConnectGetLibVersion()
 	if err != nil {
 		log.Fatalf("failed to retrieve libvirt version: %v", err)
 	}
 	fmt.Println("Version:", v)
 
-	domains, err := l.Domains()
+	flags := libvirt.ConnectListDomainsActive | libvirt.ConnectListDomainsInactive
+	domains, _, err := l.ConnectListAllDomains(1, flags)
 	if err != nil {
 		log.Fatalf("failed to retrieve domains: %v", err)
 	}
@@ -163,10 +159,11 @@ func main() {
 		fmt.Printf("%d\t%s\t%x\n", d.ID, d.Name, d.UUID)
 	}
 
-	if err := l.Disconnect(); err != nil {
+	if err = l.Disconnect(); err != nil {
 		log.Fatalf("failed to disconnect: %v", err)
 	}
 }
+
 
 ```
 
@@ -193,53 +190,24 @@ import (
         "log"
 
         "github.com/digitalocean/go-libvirt"
+        "github.com/digitalocean/go-libvirt/socket/dialers"
 )
 
 func main() {
         // This dials libvirt on the local machine
         // It connects to libvirt via TLS over TCP
         // To connect to a remote machine, you need to have the ca/cert/key of it.
-        keyFileXML, err := ioutil.ReadFile("/etc/pki/libvirt/private/clientkey.pem")
-        if err != nil {
-                log.Fatalf("%v", err)
-        }
-
-        certFileXML, err := ioutil.ReadFile("/etc/pki/libvirt/clientcert.pem")
-        if err != nil {
-                log.Fatalf("%v", err)
-        }
-
-        caFileXML, err := ioutil.ReadFile("/etc/pki/CA/cacert.pem")
-        if err != nil {
-                log.Fatalf("%v", err)
-        }
-        cert, err := tls.X509KeyPair([]byte(certFileXML), []byte(keyFileXML))
-        if err != nil {
-                log.Fatalf("%v", err)
-        }
-
-        roots := x509.NewCertPool()
-        roots.AppendCertsFromPEM([]byte(caFileXML))
-
-        config := &tls.Config{
-                Certificates: []tls.Certificate{cert},
-                RootCAs:      roots,
-        }
+        // The private key is at ~/.pki/libvirt/clientkey.pem
+        // or /etc/pki/libvirt/private/clientkey.pem
+        // The Client Cert is at ~/.pki/libvirt/clientcert.pem
+        // or /etc/pki/libvirt/clientcert.pem
+        // The CA Cert is at ~/.pki/libvirt/cacert.pem
+        // or /etc/pki/CA/cacert.pem
 
         // Use host name or IP which is valid in certificate
         addr := "10.10.10.10"
-        port := "16514"
-        c, err := tls.Dial("tcp", addr + ":" + port, config)
-        if err != nil {
-                log.Fatalf("failed to dial libvirt: %v", err)
-        }
 
-        // Drop a byte before libvirt.New(c)
-        // More details at https://github.com/digitalocean/go-libvirt/issues/89
-        // Remove this line if the issue does not exist any more
-        c.Read(make([]byte, 1))
-
-        l := libvirt.New(c)
+        l := libvirt.NewWithDialer(dialers.NewTLS(addr))
         if err := l.Connect(); err != nil {
                 log.Fatalf("failed to connect: %v", err)
         }
@@ -272,9 +240,9 @@ func main() {
 Running the Integration Tests
 -----------------------------
 
-Github actions workflows are defined in .github/worflows and can be triggered
-manually in the github GUI after pushing a branch.  There are not currently
-convenient scripts for setting up and running integration tests locally, but
-installing libvirt and defining only the artifacts described by the files in
-testdata should be sufficient to be able to run the integration test file against.
-
+GitHub actions workflows are defined in [.github/workflows](.github/workflows)
+and can be triggered manually in the GitHub UI after pushing a branch. There
+are not currently convenient scripts for setting up and running integration tests
+locally, but installing libvirt and defining only the artifacts described by the
+files in testdata should be sufficient to be able to run the integration test file
+against.

@@ -883,6 +883,60 @@ const (
 	ProcDomainAuthorizedSshKeysSet = 425
 	// ProcDomainGetMessages is libvirt's REMOTE_PROC_DOMAIN_GET_MESSAGES
 	ProcDomainGetMessages = 426
+	// ProcDomainStartDirtyRateCalc is libvirt's REMOTE_PROC_DOMAIN_START_DIRTY_RATE_CALC
+	ProcDomainStartDirtyRateCalc = 427
+	// ProcNodeDeviceDefineXML is libvirt's REMOTE_PROC_NODE_DEVICE_DEFINE_XML
+	ProcNodeDeviceDefineXML = 428
+	// ProcNodeDeviceUndefine is libvirt's REMOTE_PROC_NODE_DEVICE_UNDEFINE
+	ProcNodeDeviceUndefine = 429
+	// ProcNodeDeviceCreate is libvirt's REMOTE_PROC_NODE_DEVICE_CREATE
+	ProcNodeDeviceCreate = 430
+	// ProcNwfilterDefineXMLFlags is libvirt's REMOTE_PROC_NWFILTER_DEFINE_XML_FLAGS
+	ProcNwfilterDefineXMLFlags = 431
+	// ProcNetworkDefineXMLFlags is libvirt's REMOTE_PROC_NETWORK_DEFINE_XML_FLAGS
+	ProcNetworkDefineXMLFlags = 432
+	// ProcNodeDeviceGetAutostart is libvirt's REMOTE_PROC_NODE_DEVICE_GET_AUTOSTART
+	ProcNodeDeviceGetAutostart = 433
+	// ProcNodeDeviceSetAutostart is libvirt's REMOTE_PROC_NODE_DEVICE_SET_AUTOSTART
+	ProcNodeDeviceSetAutostart = 434
+	// ProcNodeDeviceIsPersistent is libvirt's REMOTE_PROC_NODE_DEVICE_IS_PERSISTENT
+	ProcNodeDeviceIsPersistent = 435
+	// ProcNodeDeviceIsActive is libvirt's REMOTE_PROC_NODE_DEVICE_IS_ACTIVE
+	ProcNodeDeviceIsActive = 436
+	// ProcNetworkCreateXMLFlags is libvirt's REMOTE_PROC_NETWORK_CREATE_XML_FLAGS
+	ProcNetworkCreateXMLFlags = 437
+	// ProcDomainEventMemoryDeviceSizeChange is libvirt's REMOTE_PROC_DOMAIN_EVENT_MEMORY_DEVICE_SIZE_CHANGE
+	ProcDomainEventMemoryDeviceSizeChange = 438
+	// ProcDomainSetLaunchSecurityState is libvirt's REMOTE_PROC_DOMAIN_SET_LAUNCH_SECURITY_STATE
+	ProcDomainSetLaunchSecurityState = 439
+	// ProcDomainSaveParams is libvirt's REMOTE_PROC_DOMAIN_SAVE_PARAMS
+	ProcDomainSaveParams = 440
+	// ProcDomainRestoreParams is libvirt's REMOTE_PROC_DOMAIN_RESTORE_PARAMS
+	ProcDomainRestoreParams = 441
+	// ProcDomainAbortJobFlags is libvirt's REMOTE_PROC_DOMAIN_ABORT_JOB_FLAGS
+	ProcDomainAbortJobFlags = 442
+	// ProcDomainFdAssociate is libvirt's REMOTE_PROC_DOMAIN_FD_ASSOCIATE
+	ProcDomainFdAssociate = 443
+	// ProcNetworkSetMetadata is libvirt's REMOTE_PROC_NETWORK_SET_METADATA
+	ProcNetworkSetMetadata = 444
+	// ProcNetworkGetMetadata is libvirt's REMOTE_PROC_NETWORK_GET_METADATA
+	ProcNetworkGetMetadata = 445
+	// ProcNetworkEventCallbackMetadataChange is libvirt's REMOTE_PROC_NETWORK_EVENT_CALLBACK_METADATA_CHANGE
+	ProcNetworkEventCallbackMetadataChange = 446
+	// ProcNodeDeviceUpdate is libvirt's REMOTE_PROC_NODE_DEVICE_UPDATE
+	ProcNodeDeviceUpdate = 447
+	// ProcDomainGraphicsReload is libvirt's REMOTE_PROC_DOMAIN_GRAPHICS_RELOAD
+	ProcDomainGraphicsReload = 448
+	// ProcDomainGetAutostartOnce is libvirt's REMOTE_PROC_DOMAIN_GET_AUTOSTART_ONCE
+	ProcDomainGetAutostartOnce = 449
+	// ProcDomainSetAutostartOnce is libvirt's REMOTE_PROC_DOMAIN_SET_AUTOSTART_ONCE
+	ProcDomainSetAutostartOnce = 450
+	// ProcDomainSetThrottleGroup is libvirt's REMOTE_PROC_DOMAIN_SET_THROTTLE_GROUP
+	ProcDomainSetThrottleGroup = 451
+	// ProcDomainDelThrottleGroup is libvirt's REMOTE_PROC_DOMAIN_DEL_THROTTLE_GROUP
+	ProcDomainDelThrottleGroup = 452
+	// ProcDomainEventNicMacChange is libvirt's REMOTE_PROC_DOMAIN_EVENT_NIC_MAC_CHANGE
+	ProcDomainEventNicMacChange = 453
 
 
 	// From consts:
@@ -978,6 +1032,8 @@ const (
 	NodeMemoryParametersMax = 64
 	// DomainMigrateParamListMax is libvirt's REMOTE_DOMAIN_MIGRATE_PARAM_LIST_MAX
 	DomainMigrateParamListMax = 64
+	// DomainSaveParamsMax is libvirt's REMOTE_DOMAIN_SAVE_PARAMS_MAX
+	DomainSaveParamsMax = 64
 	// DomainJobStatsMax is libvirt's REMOTE_DOMAIN_JOB_STATS_MAX
 	DomainJobStatsMax = 64
 	// ConnectCPUModelsMax is libvirt's REMOTE_CONNECT_CPU_MODELS_MAX
@@ -1006,6 +1062,8 @@ const (
 	NodeSevInfoMax = 64
 	// DomainLaunchSecurityInfoParamsMax is libvirt's REMOTE_DOMAIN_LAUNCH_SECURITY_INFO_PARAMS_MAX
 	DomainLaunchSecurityInfoParamsMax = 64
+	// DomainLaunchSecurityStateParamsMax is libvirt's REMOTE_DOMAIN_LAUNCH_SECURITY_STATE_PARAMS_MAX
+	DomainLaunchSecurityStateParamsMax = 64
 	// DomainGuestInfoParamsMax is libvirt's REMOTE_DOMAIN_GUEST_INFO_PARAMS_MAX
 	DomainGuestInfoParamsMax = 2048
 	// NetworkPortParametersMax is libvirt's REMOTE_NETWORK_PORT_PARAMETERS_MAX
