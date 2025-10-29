@@ -19,7 +19,7 @@ ARG TARGETPLATFORM
 # podman build --all-platforms --manifest $IMG --target kubesan-tools -f deps/Containerfile .
 # podman manifest push $IMG
 
-FROM --platform=$TARGETPLATFORM quay.io/projectquay/golang:1.22 AS go-builder
+FROM --platform=$TARGETPLATFORM quay.io/projectquay/golang:1.24 AS go-builder
 
 WORKDIR /kubesan
 COPY Makefile ./
