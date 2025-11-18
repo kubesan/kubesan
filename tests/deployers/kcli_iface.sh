@@ -141,8 +141,8 @@ __start_kcli_cluster() {
     else
         if (( use_cache )); then
             __log_cyan "restore from snapshot"
-            __kcli revert plan-snapshot --plan "$1" "$1"-snap
-            __kcli create plan-snapshot --plan "$1" "$1"-snap
+            __kcli revert plan-snapshot "$1" "$1"-snap
+            __kcli create plan-snapshot "$1" "$1"-snap
         fi
     fi
 
@@ -177,7 +177,7 @@ export -f __delete_kcli_cluster
 # Usage: __snapshot_kcli_cluster <profile>
 __snapshot_kcli_cluster() {
     __stop_${deploy_tool}_cluster --soft "$1"
-    __kcli create plan-snapshot --plan "$1" "$1"-snap
+    __kcli create plan-snapshot "$1" "$1"-snap
 }
 export -f __snapshot_kcli_cluster
 
