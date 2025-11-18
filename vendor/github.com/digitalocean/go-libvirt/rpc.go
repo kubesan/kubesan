@@ -32,6 +32,10 @@ import (
 // ErrUnsupported is returned if a procedure is not supported by libvirt
 var ErrUnsupported = errors.New("unsupported procedure requested")
 
+// ErrInterrupted is returned if the socket is closed while waiting for the
+// result of a procedure call.
+var ErrInterrupted = errors.New("procedure interrupted while awaiting response")
+
 // internal rpc response
 type response struct {
 	Payload []byte
@@ -85,11 +89,14 @@ func (l *Libvirt) Route(h *socket.Header, buf []byte) {
 	// Route events to their respective listener
 	var event event.Event
 
-	switch {
-	case h.Program == constants.QEMUProgram && h.Procedure == constants.QEMUProcDomainMonitorEvent:
+	switch h.Program {
+	case constants.QEMUProgram:
+		if h.Procedure != constants.QEMUProcDomainMonitorEvent {
+			break
+		}
 		event = &DomainEvent{}
-	case h.Program == constants.Program && h.Procedure == constants.ProcDomainEventCallbackLifecycle:
-		event = &DomainEventCallbackLifecycleMsg{}
+	case constants.Program:
+		event = eventFromProcedureID(h.Procedure)
 	}
 
 	if event != nil {
@@ -104,6 +111,58 @@ func (l *Libvirt) Route(h *socket.Header, buf []byte) {
 
 	// send response to caller
 	l.callback(h.Serial, response{Payload: buf, Status: h.Status})
+}
+
+func eventFromProcedureID(procID uint32) event.Event {
+	switch procID {
+	case constants.ProcDomainEventCallbackLifecycle:
+		return &DomainEventCallbackLifecycleMsg{}
+	case constants.ProcDomainEventCallbackReboot:
+		return &DomainEventCallbackRebootMsg{}
+	case constants.ProcDomainEventCallbackRtcChange:
+		return &DomainEventCallbackRtcChangeMsg{}
+	case constants.ProcDomainEventCallbackWatchdog:
+		return &DomainEventCallbackWatchdogMsg{}
+	case constants.ProcDomainEventCallbackIOError:
+		return &DomainEventCallbackIOErrorMsg{}
+	case constants.ProcDomainEventCallbackIOErrorReason:
+		return &DomainEventCallbackIOErrorReasonMsg{}
+	case constants.ProcDomainEventCallbackGraphics:
+		return &DomainEventCallbackGraphicsMsg{}
+	case constants.ProcDomainEventCallbackBlockJob:
+		return &DomainEventCallbackBlockJobMsg{}
+	case constants.ProcDomainEventCallbackDiskChange:
+		return &DomainEventCallbackDiskChangeMsg{}
+	case constants.ProcDomainEventCallbackTrayChange:
+		return &DomainEventCallbackTrayChangeMsg{}
+	case constants.ProcDomainEventCallbackPmwakeup:
+		return &DomainEventCallbackPmwakeupMsg{}
+	case constants.ProcDomainEventCallbackPmsuspend:
+		return &DomainEventCallbackPmsuspendMsg{}
+	case constants.ProcDomainEventCallbackBalloonChange:
+		return &DomainEventCallbackBalloonChangeMsg{}
+	case constants.ProcDomainEventCallbackPmsuspendDisk:
+		return &DomainEventCallbackPmsuspendDiskMsg{}
+	case constants.ProcDomainEventCallbackControlError:
+		return &DomainEventCallbackControlErrorMsg{}
+	case constants.ProcDomainEventCallbackDeviceRemoved:
+		return &DomainEventCallbackDeviceRemovedMsg{}
+	case constants.ProcDomainEventCallbackTunable:
+		return &DomainEventCallbackTunableMsg{}
+	case constants.ProcDomainEventCallbackDeviceAdded:
+		return &DomainEventCallbackDeviceAddedMsg{}
+	case constants.ProcDomainEventCallbackAgentLifecycle:
+		return &DomainEventCallbackAgentLifecycleMsg{}
+	case constants.ProcDomainEventCallbackMigrationIteration:
+		return &DomainEventCallbackMigrationIterationMsg{}
+	case constants.ProcDomainEventCallbackJobCompleted:
+		return &DomainEventCallbackJobCompletedMsg{}
+	case constants.ProcDomainEventCallbackDeviceRemovalFailed:
+		return &DomainEventCallbackDeviceRemovalFailedMsg{}
+	case constants.ProcDomainEventCallbackMetadataChange:
+		return &DomainEventCallbackMetadataChangeMsg{}
+	}
+	return nil
 }
 
 // serial provides atomic access to the next sequential request serial number.
@@ -289,7 +348,16 @@ func (l *Libvirt) processIncomingStream(c chan response, inStream io.Writer) (re
 }
 
 func (l *Libvirt) getResponse(c chan response) (response, error) {
-	resp := <-c
+	resp, ok := <-c
+
+	if !ok {
+		// The channel was closed before a response was received. This means
+		// that the socket was unexpectedly closed during the RPC call. In
+		// this case, we must assume the worst, such as libvirt crashed while
+		// attempting to execute the call.
+		return resp, ErrInterrupted
+	}
+
 	if resp.Status == socket.StatusError {
 		return resp, decodeError(resp.Payload)
 	}

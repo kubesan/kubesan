@@ -7,7 +7,7 @@ ARG BUILDPLATFORM
 
 FROM --platform=$BUILDPLATFORM quay.io/kubesan/kubesan-tools:latest AS tools
 
-FROM --platform=$BUILDPLATFORM quay.io/projectquay/golang:1.22
+FROM --platform=$BUILDPLATFORM quay.io/projectquay/golang:1.24
 
 # Needed for golangci-lint
 RUN dnf install -qy diffutils && dnf clean all

@@ -22,7 +22,7 @@ FROM --platform=$TARGETPLATFORM quay.io/kubesan/nbd-client-i:3.26.92 AS nbd
 
 ## --target builder
 # This target builds the kubesan binary, possibly with cross-compilation.
-FROM --platform=$BUILDPLATFORM quay.io/projectquay/golang:1.22 AS builder
+FROM --platform=$BUILDPLATFORM quay.io/projectquay/golang:1.24 AS builder
 
 WORKDIR /kubesan
 
