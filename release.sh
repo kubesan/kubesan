@@ -26,15 +26,16 @@ git commit -s -m "Release ${VERSION}" -e
 
 # Run tests
 printf "${GREEN}Running tests${RESET}\n"
+mkdir -p tmp
 {
     set +e
     tests/run.sh create-cache &&
         tests/run.sh --use-cache all &&
         tests/run.sh --use-cache all --mode Linear
-    echo $? > tmp/build-$VERS.status
+    echo $? > tmp/build-${VERSION}.status
     set -e
-} 2>&1 | tee tmp/build-$VERS.log
-read status < tmp/build-$VERS.status
+} 2>&1 | tee tmp/build-${VERSION}.log
+read status < tmp/build-${VERSION}.status
 [[ $status == 0 ]]
 
 # Publish container image
