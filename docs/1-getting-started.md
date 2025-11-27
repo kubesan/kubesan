@@ -211,13 +211,13 @@ $ sudo vgchange --devicesfile my-vg --lock-start
 If you are using OpenShift:
 
 ```console
-$ kubectl apply -k https://gitlab.com/kubesan/kubesan/deploy/openshift?ref=v0.10.2
+$ kubectl apply -k https://gitlab.com/kubesan/kubesan/deploy/openshift?ref=v0.10.3
 ```
 
 Otherwise use the vanilla Kubernetes kustomization:
 
 ```console
-$ kubectl apply -k https://gitlab.com/kubesan/kubesan/deploy/kubernetes?ref=v0.10.2
+$ kubectl apply -k https://gitlab.com/kubesan/kubesan/deploy/kubernetes?ref=v0.10.3
 ```
 
 Next, create a `StorageClass` that uses the KubeSAN CSI plugin and
